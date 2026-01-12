@@ -144,11 +144,11 @@
                         const data = result.data;
                         
                         document.getElementById('temperature').textContent = 
-                            data.temperature.toFixed(1);
+                            (data.temperature != null ? data.temperature.toFixed(1) : '--');
                         document.getElementById('humidity').textContent = 
-                            data.humidity.toFixed(1);
+                            (data.humidity != null ? data.humidity.toFixed(1) : '--');
                         document.getElementById('pressure').textContent = 
-                            data.pressure.toFixed(1);
+                            (data.pressure != null ? data.pressure.toFixed(1) : '--');
                         
                         const timestamp = new Date(data.server_timestamp);
                         document.getElementById('lastUpdate').textContent = 

@@ -60,6 +60,9 @@ def get_sensor_data():
         # Get query parameters for filtering
         limit = request.args.get('limit', default=100, type=int)
         
+        # Validate limit to prevent memory exhaustion
+        limit = max(1, min(limit, 1000))  # Clamp between 1 and 1000
+        
         # Return the last 'limit' entries
         return jsonify({
             'status': 'success',
