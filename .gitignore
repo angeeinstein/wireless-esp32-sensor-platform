@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Flask
+instance/
+.env
+*.log
+
+# PlatformIO
+firmware/.pio/
+firmware/.vscode/
+firmware/lib/
+firmware/.pioenvs/
+firmware/.piolibdeps/
+firmware/.clang_complete
+firmware/.gcc-flags.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Build artifacts
+*.bin
+*.hex
+*.elf
+
+# Temporary files
+*.tmp
+*.bak
+*.old
