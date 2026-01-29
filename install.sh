@@ -276,17 +276,17 @@ setup_python_venv() {
     print_success "Virtual environment created"
     
     print_info "Installing Python dependencies..."
-    sudo -u "$SERVICE_USER" venv/bin/pip install --upgrade pip setuptools wheel -q
+    sudo -H -u "$SERVICE_USER" venv/bin/pip install --upgrade pip setuptools wheel -q
     
     if [[ -f "requirements.txt" ]]; then
-        sudo -u "$SERVICE_USER" venv/bin/pip install -r requirements.txt -q || {
+        sudo -H -u "$SERVICE_USER" venv/bin/pip install -r requirements.txt -q || {
             print_error "Failed to install Python dependencies"
             exit 1
         }
     else
         # Install dependencies manually if requirements.txt doesn't exist
         print_warning "requirements.txt not found, installing dependencies manually"
-        sudo -u "$SERVICE_USER" venv/bin/pip install flask flask-cors -q || {
+        sudo -H -u "$SERVICE_USER" venv/bin/pip install flask flask-cors -q || {
             print_error "Failed to install Python dependencies"
             exit 1
         }
@@ -698,8 +698,10 @@ start_service() {
 display_info() {
     print_header "Installation Complete!"
     
-    # Get server IP addresses
+    # Get server IP addresses (prefer non-local addresses)
     IP_ADDRESSES=$(hostname -I 2>/dev/null || ip addr show | grep 'inet ' | awk '{print $2}' | cut -d/ -f1 | grep -v 127.0.0.1)
+    PRIMARY_IP=$(echo $IP_ADDRESSES | awk '{print $1}')
+    SECONDARY_IPS=$(echo $IP_ADDRESSES | awk '{for(i=2;i<=NF;i++) print $i}')
     
     echo ""
     echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
@@ -707,12 +709,21 @@ display_info() {
     echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
     echo ""
     echo -e "${BLUE}Access URLs:${NC}"
-    for ip in $IP_ADDRESSES; do
-        echo -e "  ${GREEN}→${NC} Web Dashboard:  http://${ip}"
-        echo -e "  ${GREEN}→${NC} API Endpoint:   http://${ip}/api/stats"
-        echo -e "  ${GREEN}→${NC} Health Check:   http://${ip}/health"
-        echo -e "  ${GREEN}→${NC} UDP Receiver:   ${ip}:9999"
-    done
+    if [[ -n "$PRIMARY_IP" ]]; then
+        echo -e "  ${GREEN}→${NC} Web Dashboard:  http://${PRIMARY_IP}"
+        echo -e "  ${GREEN}→${NC} API Endpoint:   http://${PRIMARY_IP}/api/stats"
+        echo -e "  ${GREEN}→${NC} Health Check:   http://${PRIMARY_IP}/health"
+        echo -e "  ${GREEN}→${NC} UDP Receiver:   ${PRIMARY_IP}:9999"
+    fi
+    
+    # Show additional IPs if present
+    if [[ -n "$SECONDARY_IPS" ]]; then
+        echo ""
+        echo -e "${BLUE}Additional Network Interfaces:${NC}"
+        for ip in $SECONDARY_IPS; do
+            echo -e "  ${GREEN}→${NC} Also available at: http://${ip}"
+        done
+    fi
     echo ""
     echo -e "${BLUE}Service Management:${NC}"
     echo -e "  ${GREEN}→${NC} Backend:  systemctl status $SERVICE_NAME"
