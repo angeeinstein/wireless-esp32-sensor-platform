@@ -185,11 +185,13 @@ update_script() {
             # Compare versions or checksums
             if ! cmp -s "$0" "$TEMP_SCRIPT"; then
                 print_info "New version found, updating..."
-                cp "$TEMP_SCRIPT" "$0"
-                chmod +x "$0"
+                # Get absolute path of current script
+                SCRIPT_PATH="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+                cp "$TEMP_SCRIPT" "$SCRIPT_PATH"
+                chmod +x "$SCRIPT_PATH"
                 rm -f "$TEMP_SCRIPT"
                 print_success "Script updated! Re-running with new version..."
-                exec "$0" "$@"
+                exec bash "$SCRIPT_PATH" "$@"
             else
                 print_success "Script is already up to date"
                 rm -f "$TEMP_SCRIPT"
