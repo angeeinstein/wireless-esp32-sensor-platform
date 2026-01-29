@@ -128,6 +128,7 @@ install_system_packages() {
         "curl"
         "wget"
         "net-tools"
+        "nginx"
     )
     
     for package in "${PACKAGES[@]}"; do
@@ -322,8 +323,9 @@ configure_firewall() {
         
         # Check if UFW is active
         if ufw status | grep -q "Status: active"; then
-            print_info "Allowing ports 5000 (HTTP) and 9999 (UDP)..."
-            ufw allow 5000/tcp comment "ESP32 Sensor HTTP API" || true
+            print_info "Allowing ports 80 (HTTP), 443 (HTTPS), and 9999 (UDP)..."
+            ufw allow 80/tcp comment "ESP32 Sensor HTTP" || true
+            ufw allow 443/tcp comment "ESP32 Sensor HTTPS" || true
             ufw allow 9999/udp comment "ESP32 Sensor UDP Data" || true
             print_success "Firewall rules added"
         else
@@ -342,22 +344,23 @@ create_systemd_service() {
     
     print_info "Creating service file at $SERVICE_FILE..."
     
+    # NOTE: Using 1 worker because the UDP receiver thread must run in a single process
+    # Multiple workers would each try to bind to UDP port 9999, causing failures
+    # We use 4 threads for this private deployment (1-3 sensors, handful of users)
+    
     cat > "$SERVICE_FILE" << EOF
 [Unit]
-Description=ESP32 Wireless Sensor Platform Server
+Description=ESP32 Wireless Sensor Platform Server (Gunicorn)
 After=network.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=notify
 User=$SERVICE_USER
 Group=$SERVICE_GROUP
 WorkingDirectory=$INSTALL_DIR/server
 Environment="PATH=$INSTALL_DIR/server/venv/bin:/usr/local/bin:/usr/bin:/bin"
-Environment="FLASK_HOST=0.0.0.0"
-Environment="FLASK_PORT=5000"
-Environment="FLASK_DEBUG=False"
-ExecStart=$INSTALL_DIR/server/venv/bin/python app.py
+ExecStart=$INSTALL_DIR/server/venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 1 --threads 4 --worker-class gthread --timeout 120 --access-logfile /var/log/$SERVICE_NAME/access.log --error-logfile /var/log/$SERVICE_NAME/error.log app:app
 Restart=always
 RestartSec=10
 StandardOutput=append:/var/log/$SERVICE_NAME/output.log
@@ -387,6 +390,197 @@ EOF
     print_success "Systemd service configured"
 }
 
+# Configure Nginx
+configure_nginx() {
+    print_header "Configuring Nginx"
+    
+    NGINX_CONF="/etc/nginx/sites-available/$SERVICE_NAME"
+    NGINX_ENABLED="/etc/nginx/sites-enabled/$SERVICE_NAME"
+    
+    # Get server hostname/IP
+    SERVER_IP=$(hostname -I | awk '{print $1}')
+    
+    print_info "Creating Nginx configuration..."
+    
+    cat > "$NGINX_CONF" << 'EOF'
+# ESP32 Wireless Sensor Platform - Nginx Configuration
+# Private network deployment (internal users only)
+
+# Rate limiting (relaxed for internal use)
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=500r/s;
+limit_req_zone $binary_remote_addr zone=download_limit:10m rate=50r/s;
+
+# Upstream Gunicorn
+upstream esp32_backend {
+    server 127.0.0.1:8000 fail_timeout=0;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name _;
+    
+    # Maximum request body size
+    client_max_body_size 100M;
+    
+    # Logging
+    access_log /var/log/nginx/esp32-sensor-access.log;
+    error_log /var/log/nginx/esp32-sensor-error.log;
+    
+    # Basic security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    
+    # Root location - dashboard
+    location / {
+        proxy_pass http://esp32_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+    
+    # API endpoints with relaxed rate limiting (internal network)
+    location /api/ {
+        limit_req zone=api_limit burst=100 nodelay;
+        
+        proxy_pass http://esp32_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        proxy_read_timeout 120s;
+    }
+    
+    # Export/download endpoints
+    location /api/samples/export {
+        limit_req zone=download_limit burst=20 nodelay;
+        
+        proxy_pass http://esp32_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        proxy_read_timeout 300s;
+        proxy_buffering off;
+    }
+    
+    # Health check endpoint (no rate limiting)
+    location /health {
+        proxy_pass http://esp32_backend;
+        access_log off;
+    }
+}
+
+# HTTPS configuration (for when exposing to internet)
+# Uncomment and configure after setting up SSL certificates
+#
+# server {
+#     listen 443 ssl http2;
+#     listen [::]:443 ssl http2;
+#     server_name your-domain.com;
+#     
+#     ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+#     
+#     # SSL configuration
+#     ssl_protocols TLSv1.2 TLSv1.3;
+#     ssl_ciphers HIGH:!aNULL:!MD5;
+#     ssl_prefer_server_ciphers on;
+#     
+#     # If exposing to internet, add authentication:
+#     # auth_basic "ESP32 Sensor Platform";
+#     # auth_basic_user_file /etc/nginx/.htpasswd;
+#     
+#     # Same locations as HTTP above
+#     location / {
+#         proxy_pass http://esp32_backend;
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#     }
+#     
+#     location /api/ {
+#         limit_req zone=api_limit burst=100 nodelay;
+#         proxy_pass http://esp32_backend;
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#         proxy_read_timeout 120s;
+#     }
+#     
+#     location /api/samples/export {
+#         limit_req zone=download_limit burst=20 nodelay;
+#         proxy_pass http://esp32_backend;
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#         proxy_read_timeout 300s;
+#         proxy_buffering off;
+#     }
+#     
+#     location /health {
+#         proxy_pass http://esp32_backend;
+#         access_log off;
+#     }
+# }
+#
+# # HTTP to HTTPS redirect
+# server {
+#     listen 80;
+#     listen [::]:80;
+#     server_name your-domain.com;
+#     return 301 https://$host$request_uri;
+# }
+EOF
+    
+    print_success "Nginx configuration created"
+    
+    # Enable site
+    if [[ -L "$NGINX_ENABLED" ]]; then
+        print_info "Nginx site already enabled"
+    else
+        print_info "Enabling Nginx site..."
+        ln -sf "$NGINX_CONF" "$NGINX_ENABLED"
+        print_success "Nginx site enabled"
+    fi
+    
+    # Remove default site if it exists
+    if [[ -L "/etc/nginx/sites-enabled/default" ]]; then
+        print_info "Removing default Nginx site..."
+        rm -f "/etc/nginx/sites-enabled/default"
+    fi
+    
+    # Test Nginx configuration
+    print_info "Testing Nginx configuration..."
+    if nginx -t 2>&1 | grep -q "successful"; then
+        print_success "Nginx configuration is valid"
+        
+        # Reload Nginx
+        print_info "Reloading Nginx..."
+        systemctl enable nginx
+        systemctl restart nginx || {
+            print_error "Failed to restart Nginx"
+            exit 1
+        }
+        print_success "Nginx restarted successfully"
+    else
+        print_error "Nginx configuration test failed"
+        nginx -t
+        exit 1
+    fi
+}
+
 # Setup log rotation
 setup_log_rotation() {
     print_header "Setting Up Log Rotation"
@@ -405,6 +599,19 @@ setup_log_rotation() {
     sharedscripts
     postrotate
         systemctl reload $SERVICE_NAME > /dev/null 2>&1 || true
+    endscript
+}
+
+/var/log/nginx/esp32-sensor-*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    missingok
+    sharedscripts
+    postrotate
+        [ -f /var/run/nginx.pid ] && kill -USR1 \$(cat /var/run/nginx.pid)
     endscript
 }
 
@@ -467,13 +674,15 @@ display_info() {
     echo ""
     echo -e "${BLUE}Access URLs:${NC}"
     for ip in $IP_ADDRESSES; do
-        echo -e "  ${GREEN}→${NC} Web Dashboard:  http://${ip}:5000"
-        echo -e "  ${GREEN}→${NC} API Endpoint:   http://${ip}:5000/api/stats"
+        echo -e "  ${GREEN}→${NC} Web Dashboard:  http://${ip}"
+        echo -e "  ${GREEN}→${NC} API Endpoint:   http://${ip}/api/stats"
+        echo -e "  ${GREEN}→${NC} Health Check:   http://${ip}/health"
         echo -e "  ${GREEN}→${NC} UDP Receiver:   ${ip}:9999"
     done
     echo ""
     echo -e "${BLUE}Service Management:${NC}"
-    echo -e "  ${GREEN}→${NC} Status:   systemctl status $SERVICE_NAME"
+    echo -e "  ${GREEN}→${NC} Backend:  systemctl status $SERVICE_NAME"
+    echo -e "  ${GREEN}→${NC} Nginx:    systemctl status nginx"
     echo -e "  ${GREEN}→${NC} Start:    systemctl start $SERVICE_NAME"
     echo -e "  ${GREEN}→${NC} Stop:     systemctl stop $SERVICE_NAME"
     echo -e "  ${GREEN}→${NC} Restart:  systemctl restart $SERVICE_NAME"
@@ -482,17 +691,20 @@ display_info() {
     echo -e "${BLUE}Data Locations:${NC}"
     echo -e "  ${GREEN}→${NC} Database:    $INSTALL_DIR/server/data/accelerometer.db"
     echo -e "  ${GREEN}→${NC} CSV Logs:    $INSTALL_DIR/server/data/accel_stream.csv"
-    echo -e "  ${GREEN}→${NC} Service Log: /var/log/$SERVICE_NAME/"
+    echo -e "  ${GREEN}→${NC} Backend Log: /var/log/$SERVICE_NAME/"
+    echo -e "  ${GREEN}→${NC} Nginx Log:   /var/log/nginx/esp32-sensor-*.log"
     echo ""
     echo -e "${BLUE}Configuration:${NC}"
     echo -e "  ${GREEN}→${NC} Install Dir: $INSTALL_DIR"
-    echo -e "  ${GREEN}→${NC} Service:     /etc/systemd/system/${SERVICE_NAME}.service"
+    echo -e "  ${GREEN}→${NC} Gunicorn:    /etc/systemd/system/${SERVICE_NAME}.service"
+    echo -e "  ${GREEN}→${NC} Nginx:       /etc/nginx/sites-available/${SERVICE_NAME}"
     echo -e "  ${GREEN}→${NC} User:        $SERVICE_USER"
     echo ""
     echo -e "${BLUE}Next Steps:${NC}"
     echo -e "  ${GREEN}1.${NC} Configure your ESP32 to send data to: ${IP_ADDRESSES%% *}:9999"
-    echo -e "  ${GREEN}2.${NC} Access the web dashboard at: http://${IP_ADDRESSES%% *}:5000"
+    echo -e "  ${GREEN}2.${NC} Access the web dashboard at: http://${IP_ADDRESSES%% *}"
     echo -e "  ${GREEN}3.${NC} Monitor logs with: journalctl -u $SERVICE_NAME -f"
+    echo -e "  ${GREEN}4.${NC} (Optional) Set up SSL: sudo certbot --nginx -d your-domain.com"
     echo ""
     echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
     echo ""
@@ -583,6 +795,9 @@ main() {
             # Update service file
             create_systemd_service
             
+            # Update Nginx configuration
+            configure_nginx
+            
             # Update log rotation
             setup_log_rotation
             
@@ -626,6 +841,9 @@ main() {
     
     # Create systemd service
     create_systemd_service
+    
+    # Configure Nginx
+    configure_nginx
     
     # Setup log rotation
     setup_log_rotation
