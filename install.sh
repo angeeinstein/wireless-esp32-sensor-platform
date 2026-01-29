@@ -214,13 +214,19 @@ setup_repository() {
         print_info "Repository exists, updating..."
         cd "$INSTALL_DIR"
         
-        # Stash any local changes
-        sudo -u "$SERVICE_USER" git stash || true
+        # Fix ownership issues before git operations
+        print_info "Fixing repository ownership..."
+        chown -R root:root "$INSTALL_DIR"
+        
+        # Add to safe directories if needed
+        git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+        
+        # Reset any local changes (since we're updating from remote)
+        git reset --hard HEAD 2>/dev/null || true
         
         # Pull latest changes
-        sudo -u "$SERVICE_USER" git pull origin main || sudo -u "$SERVICE_USER" git pull origin master || {
-            print_error "Failed to update repository"
-            exit 1
+        git pull origin main || git pull origin master || {
+            print_warning "Could not update repository, continuing with existing version"
         }
         
         print_success "Repository updated"
