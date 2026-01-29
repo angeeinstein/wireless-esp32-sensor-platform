@@ -306,10 +306,15 @@ create_directories() {
         fi
     done
     
-    # Set ownership
+    # Set ownership and permissions
     chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR/server/data"
     chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR/server/logs"
     chown -R "$SERVICE_USER:$SERVICE_GROUP" "/var/log/$SERVICE_NAME"
+    
+    # Ensure directories are writable
+    chmod 755 "$INSTALL_DIR/server/data"
+    chmod 755 "$INSTALL_DIR/server/logs"
+    chmod 755 "/var/log/$SERVICE_NAME"
     
     print_success "Data directories configured"
 }
@@ -633,6 +638,10 @@ EOF
 start_service() {
     print_header "Starting Service"
     
+    # Ensure log directory has correct permissions (fix for any permission issues)
+    chown -R "$SERVICE_USER:$SERVICE_GROUP" "/var/log/$SERVICE_NAME"
+    chmod 755 "/var/log/$SERVICE_NAME"
+    
     print_info "Enabling service to start on boot..."
     systemctl enable "$SERVICE_NAME" || {
         print_error "Failed to enable service"
@@ -642,12 +651,25 @@ start_service() {
     print_info "Starting service..."
     systemctl restart "$SERVICE_NAME" || {
         print_error "Failed to start service"
-        print_info "Check logs with: journalctl -u $SERVICE_NAME -f"
-        exit 1
+        print_info "Check logs with: journalctl -u $SERVICE_NAME -n 50"
+        
+        # Try to get more details
+        print_info "Attempting to run manually for diagnostics..."
+        cd "$INSTALL_DIR/server"
+        sudo -u "$SERVICE_USER" "$INSTALL_DIR/server/venv/bin/gunicorn" --bind 127.0.0.1:8000 --workers 1 --threads 4 app:app &
+        MANUAL_PID=$!
+        sleep 2
+        if ps -p $MANUAL_PID > /dev/null; then
+            print_warning "Manual start succeeded - permission issue detected and fixed"
+            kill $MANUAL_PID
+            systemctl restart "$SERVICE_NAME"
+        else
+            print_error "Manual start also failed - check Python dependencies"
+        fi
     }
     
     # Wait a moment for service to start
-    sleep 2
+    sleep 3
     
     # Check service status
     if systemctl is-active --quiet "$SERVICE_NAME"; then
@@ -656,6 +678,10 @@ start_service() {
         print_error "Service failed to start"
         print_info "Check status with: systemctl status $SERVICE_NAME"
         print_info "Check logs with: journalctl -u $SERVICE_NAME -n 50"
+        
+        # Show last few log lines
+        print_info "Recent log output:"
+        journalctl -u "$SERVICE_NAME" -n 10 --no-pager || true
         exit 1
     fi
 }
