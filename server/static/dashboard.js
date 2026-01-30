@@ -3,10 +3,7 @@ const socket = io();
 
 // Initialize Chart.js
 let accelChart = null;
-let chartBuffer = [];  // Rolling buffer for chart data
 const CHART_WINDOW_SECONDS = 2;  // Show 2 seconds of data for smooth display
-const MAX_CHART_POINTS = 2000;  // Allow more points for better resolution
-let lastBulkFetch = 0;  // Track last time we fetched bulk data
 
 function initChart() {
     const ctx = document.getElementById('accelChart').getContext('2d');
@@ -84,79 +81,38 @@ function initChart() {
     });
 }
 
-function updateChartWithSample(sample) {
-    if (!sample || !accelChart) return;
-    
-    // Add sample to buffer
-    chartBuffer.push(sample);
-    
-    // Remove old samples outside the time window
-    const now = sample.timestamp;
-    const cutoff = now - CHART_WINDOW_SECONDS;
-    chartBuffer = chartBuffer.filter(s => s.timestamp >= cutoff);
-    
-    // Downsample if too many points (keep every Nth sample)
-    let displaySamples = chartBuffer;
-    if (chartBuffer.length > MAX_CHART_POINTS) {
-        const step = Math.ceil(chartBuffer.length / MAX_CHART_POINTS);
-        displaySamples = chartBuffer.filter((_, i) => i % step === 0);
-    }
-    
-    // Get relative time from oldest sample
-    if (displaySamples.length > 0) {
-        const startTime = displaySamples[0].timestamp;
-        
-        // Update chart datasets
-        accelChart.data.datasets[0].data = displaySamples.map(s => ({
-            x: s.timestamp - startTime,
-            y: s.ax_g
-        }));
-        accelChart.data.datasets[1].data = displaySamples.map(s => ({
-            x: s.timestamp - startTime,
-            y: s.ay_g
-        }));
-        accelChart.data.datasets[2].data = displaySamples.map(s => ({
-            x: s.timestamp - startTime,
-            y: s.az_g
-        }));
-        
-        // Update chart (mode 'none' = no animation)
-        accelChart.update('none');
-    }
-}
-
-function loadInitialChartData() {
-    // Load initial data via HTTP
+function updateChart() {
+    // Fetch full resolution data from server
     fetch('/api/samples/recent?seconds=' + CHART_WINDOW_SECONDS)
         .then(r => r.json())
         .then(result => {
             if (result.samples && result.samples.length > 0) {
-                chartBuffer = result.samples;
-                updateChartWithSample(result.samples[result.samples.length - 1]);
-                lastBulkFetch = Date.now();
+                const samples = result.samples;
+                
+                // Get relative time from oldest sample
+                const startTime = samples[0].timestamp;
+                
+                // Update chart datasets with all available data
+                accelChart.data.datasets[0].data = samples.map(s => ({
+                    x: s.timestamp - startTime,
+                    y: s.ax_g
+                }));
+                accelChart.data.datasets[1].data = samples.map(s => ({
+                    x: s.timestamp - startTime,
+                    y: s.ay_g
+                }));
+                accelChart.data.datasets[2].data = samples.map(s => ({
+                    x: s.timestamp - startTime,
+                    y: s.az_g
+                }));
+                
+                // Update chart without animation for smooth display
+                accelChart.update('none');
             }
         })
         .catch(error => {
-            console.error('Error loading initial chart data:', error);
+            console.error('Error updating chart:', error);
         });
-}
-
-function refreshChartData() {
-    // Periodically refresh bulk data to maintain smooth display
-    const now = Date.now();
-    if (now - lastBulkFetch > 1000) {  // Refresh every second
-        fetch('/api/samples/recent?seconds=' + CHART_WINDOW_SECONDS)
-            .then(r => r.json())
-            .then(result => {
-                if (result.samples && result.samples.length > 0) {
-                    chartBuffer = result.samples;
-                    lastBulkFetch = now;
-                }
-            })
-            .catch(error => {
-                console.error('Error refreshing chart data:', error);
-            });
-    }
 }
 
 function formatNumber(num, decimals = 0) {
@@ -249,7 +205,6 @@ socket.on('stats_update', (stats) => {
 // Initialize chart on page load
 initChart();
 
-// Load initial data to populate chart
-loadInitialChartData();
-
-// Chart now updates via WebSocket at 30 Hz (no polling needed)
+// Update chart every 100ms for high time resolution (10 Hz refresh with full data)
+updateChart();
+setInterval(updateChart, 100);
