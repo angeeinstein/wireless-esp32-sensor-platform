@@ -4,8 +4,9 @@ const socket = io();
 // Initialize Chart.js
 let accelChart = null;
 let chartBuffer = [];  // Rolling buffer for chart data
-const CHART_WINDOW_SECONDS = 10;  // Show 10 seconds of data
-const MAX_CHART_POINTS = 1000;  // Limit points for performance
+const CHART_WINDOW_SECONDS = 2;  // Show 2 seconds of data for smooth display
+const MAX_CHART_POINTS = 2000;  // Allow more points for better resolution
+let lastBulkFetch = 0;  // Track last time we fetched bulk data
 
 function initChart() {
     const ctx = document.getElementById('accelChart').getContext('2d');
@@ -125,18 +126,37 @@ function updateChartWithSample(sample) {
 }
 
 function loadInitialChartData() {
-    // Load initial 10 seconds of data via HTTP
-    fetch('/api/samples/recent?seconds=10')
+    // Load initial data via HTTP
+    fetch('/api/samples/recent?seconds=' + CHART_WINDOW_SECONDS)
         .then(r => r.json())
         .then(result => {
             if (result.samples && result.samples.length > 0) {
                 chartBuffer = result.samples;
                 updateChartWithSample(result.samples[result.samples.length - 1]);
+                lastBulkFetch = Date.now();
             }
         })
         .catch(error => {
             console.error('Error loading initial chart data:', error);
         });
+}
+
+function refreshChartData() {
+    // Periodically refresh bulk data to maintain smooth display
+    const now = Date.now();
+    if (now - lastBulkFetch > 1000) {  // Refresh every second
+        fetch('/api/samples/recent?seconds=' + CHART_WINDOW_SECONDS)
+            .then(r => r.json())
+            .then(result => {
+                if (result.samples && result.samples.length > 0) {
+                    chartBuffer = result.samples;
+                    lastBulkFetch = now;
+                }
+            })
+            .catch(error => {
+                console.error('Error refreshing chart data:', error);
+            });
+    }
 }
 
 function formatNumber(num, decimals = 0) {
@@ -165,7 +185,10 @@ socket.on('disconnect', () => {
     document.getElementById('statusText').textContent = 
         '❌ Connection lost - Reconnecting...';
 });
-
+    
+        // Periodically refresh bulk data for smooth display
+        refreshChartData();
+    
 // Real-time sample updates - now also updates chart at 30 Hz
 socket.on('sample_update', (sample) => {
     if (sample) {
