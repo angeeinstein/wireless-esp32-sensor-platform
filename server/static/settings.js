@@ -4,6 +4,13 @@ document.addEventListener('DOMContentLoaded', () => {
     loadDatabaseStats();
 });
 
+// Make functions globally accessible
+window.loadSettings = loadSettings;
+window.saveRetention = saveRetention;
+window.clearAllData = clearAllData;
+window.loadDatabaseStats = loadDatabaseStats;
+window.sendESPCommand = sendESPCommand;
+
 function loadSettings() {
     // Load retention period
     fetch('/api/settings/retention')
