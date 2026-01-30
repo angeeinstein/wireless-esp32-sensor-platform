@@ -145,6 +145,24 @@ def init_database():
     # Synchronous=NORMAL for better performance (still safe with WAL)
     cursor.execute("PRAGMA synchronous=NORMAL")
     
+    # Check if old schema exists and migrate
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='samples'")
+    table_exists = cursor.fetchone()
+    
+    if table_exists:
+        # Check if old schema (has timestamp column instead of timestamp_ms)
+        cursor.execute("PRAGMA table_info(samples)")
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        if 'timestamp' in columns and 'timestamp_ms' not in columns:
+            print("[DB] Detected old schema, migrating to optimized format...")
+            # Drop old table and recreate with new schema
+            cursor.execute("DROP TABLE IF EXISTS samples")
+            cursor.execute("DROP INDEX IF EXISTS idx_timestamp")
+            cursor.execute("DROP INDEX IF EXISTS idx_sample_id")
+            conn.commit()
+            print("[DB] Old schema dropped")
+    
     # Create optimized table with integer storage (preserves 18-bit sensor resolution)
     # Values stored as microunits (value × 1,000,000) to preserve precision
     # timestamp as milliseconds from epoch
@@ -174,7 +192,7 @@ def init_database():
     conn.commit()
     conn.close()
     print(f"[DB] Database initialized: {DB_PATH}")
-    print(f"[DB] WAL mode enabled, batch size: {DB_BATCH_SIZE} samples")
+    print(f"[DB] Optimized schema active, batch size: {DB_BATCH_SIZE} samples")
 
 def db_writer_thread():
     """Background thread that batches database writes for optimal performance"""
@@ -312,7 +330,7 @@ def udp_receiver_thread():
     last_emit_t = time.time()
     
     # Rolling window for smoothed rate calculations (1 second window)
-    rate_window_size = 10  # 10 samples at 10 Hz = 1 second
+    rate_window_size = 30  # 30 samples at 30 Hz = 1 second
     rate_window_bytes = deque(maxlen=rate_window_size)
     rate_window_samples = deque(maxlen=rate_window_size)
     rate_window_times = deque(maxlen=rate_window_size)
@@ -483,9 +501,9 @@ def udp_receiver_thread():
         # Opportunistic fast-forward
         fast_forward_if_stuck()
         
-        # Update stats every 100ms (10 Hz) for faster UI updates
+        # Update stats every 33ms (30 Hz) for smoother UI updates
         now = time.time()
-        if now - last_stat_t >= 0.1:
+        if now - last_stat_t >= 0.033:
             dt = now - last_stat_t
             
             # Add current interval to rolling window
@@ -512,7 +530,7 @@ def udp_receiver_thread():
                 current_stats.uptime_sec = now - start_time
                 current_stats.is_receiving = True
                 
-                # Emit stats update via WebSocket (10 Hz)
+                # Emit stats update via WebSocket (30 Hz for smoother graphs)
                 socketio.emit('stats_update', asdict(current_stats))
             
             # Get latest sample for real-time display
