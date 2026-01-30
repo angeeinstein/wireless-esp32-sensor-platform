@@ -142,7 +142,31 @@ function loadInitialChartData() {
 function formatNumber(num, decimals = 0) {
     if (num == null || isNaN(num)) return '--';
     if (num >= 1000000) {
-        return (num / 10000 - now also updates chart at 30 Hz
+        return (num / 1000000).toFixed(1) + 'M';
+    } else if (num >= 1000) {
+        return (num / 1000).toFixed(1) + 'K';
+    }
+    return num.toFixed(decimals);
+}
+
+// WebSocket event handlers
+socket.on('connect', () => {
+    console.log('WebSocket connected');
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+});
+
+socket.on('disconnect', () => {
+    console.log('WebSocket disconnected');
+    const status = document.getElementById('status');
+    const indicator = document.getElementById('statusIndicator');
+    status.className = 'status-bar disconnected';
+    indicator.className = 'status-indicator inactive';
+    document.getElementById('statusText').textContent = 
+        '❌ Connection lost - Reconnecting...';
+});
+
+// Real-time sample updates - now also updates chart at 30 Hz
 socket.on('sample_update', (sample) => {
     if (sample) {
         document.getElementById('accel_x').textContent = sample.ax_g.toFixed(3);
@@ -159,31 +183,7 @@ socket.on('sample_update', (sample) => {
         document.getElementById('accel_norm').textContent = mag.toFixed(3);
         
         // Update chart in real-time at 30 Hz
-        updateChartWithSample(sample
-    console.log('WebSocket disconnected');
-    const status = document.getElementById('status');
-    const indicator = document.getElementById('statusIndicator');
-    status.className = 'status-bar disconnected';
-    indicator.className = 'status-indicator inactive';
-    document.getElementById('statusText').textContent = 
-        '❌ Connection lost - Reconnecting...';
-});
-
-// Real-time sample updates
-socket.on('sample_update', (sample) => {
-    if (sample) {
-        document.getElementById('accel_x').textContent = sample.ax_g.toFixed(3);
-        document.getElementById('accel_y').textContent = sample.ay_g.toFixed(3);
-        document.getElementById('accel_z').textContent = sample.az_g.toFixed(3);
-        document.getElementById('sample_id').textContent = formatNumber(sample.sample_id);
-        
-        // Calculate magnitude
-        const mag = Math.sqrt(
-            sample.ax_g * sample.ax_g + 
-            sample.ay_g * sample.ay_g + 
-            sample.az_g * sample.az_g
-        );
-        document.getElementById('accel_norm').textContent = mag.toFixed(3);
+        updateChartWithSample(sample);
     }
 });
 
@@ -223,10 +223,10 @@ socket.on('stats_update', (stats) => {
     }
 });
 
+// Initialize chart on page load
+initChart();
+
 // Load initial data to populate chart
 loadInitialChartData();
 
 // Chart now updates via WebSocket at 30 Hz (no polling needed)
-// Update chart every 500ms (still via HTTP for bulk data)
-updateChart();
-setInterval(updateChart, 500);
