@@ -3,7 +3,7 @@ const socket = io();
 
 // Initialize Chart.js
 let accelChart = null;
-const CHART_WINDOW_SECONDS = 2;  // Show 2 seconds of data for smooth display
+const CHART_WINDOW_SECONDS = 5;  // Show 5 seconds of data for smooth display
 
 function initChart() {
     const ctx = document.getElementById('accelChart').getContext('2d');
