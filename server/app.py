@@ -300,6 +300,12 @@ def udp_receiver_thread():
     last_log_t = time.time()  # Separate timer for logging
     last_emit_t = time.time()
     
+    # Rolling window for smoothed rate calculations (1 second window)
+    rate_window_size = 10  # 10 samples at 10 Hz = 1 second
+    rate_window_bytes = deque(maxlen=rate_window_size)
+    rate_window_samples = deque(maxlen=rate_window_size)
+    rate_window_times = deque(maxlen=rate_window_size)
+    
     # Sample-time base for timestamps
     t0_wall = None
     emitted_total = 0
@@ -470,8 +476,19 @@ def udp_receiver_thread():
         now = time.time()
         if now - last_stat_t >= 0.1:
             dt = now - last_stat_t
-            mbit = (bytes_in * 8.0) / dt / 1e6
-            sps = samp_in / dt if dt > 0 else 0.0
+            
+            # Add current interval to rolling window
+            rate_window_bytes.append(bytes_in)
+            rate_window_samples.append(samp_in)
+            rate_window_times.append(dt)
+            
+            # Calculate smoothed rates over the entire window (1 second)
+            total_bytes = sum(rate_window_bytes)
+            total_samples = sum(rate_window_samples)
+            total_time = sum(rate_window_times)
+            
+            mbit = (total_bytes * 8.0) / total_time / 1e6 if total_time > 0 else 0.0
+            sps = total_samples / total_time if total_time > 0 else 0.0
             mean_norm = (acc_norm_sum / acc_norm_n) if acc_norm_n else 0.0
             
             with stats_lock:
