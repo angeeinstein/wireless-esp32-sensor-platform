@@ -6,7 +6,142 @@
     <title>ESP32 Accelerometer Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <style>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="nav-header">
+            <h1>📊 ESP32 Accelerometer Dashboard</h1>
+            <div class="nav-links">
+                <a href="/" class="nav-link active">Dashboard</a>
+                <a href="/settings" class="nav-link">Settings</a>
+            </div>
+        </div>
+        <div class="subtitle">Real-time 32 kHz High-Speed Data Stream</div>
+        
+        <div id="loading" class="loading">Loading sensor data...</div>
+        
+        <div id="content" style="display: none;">
+            <div class="dashboard">
+                <!-- Current Acceleration -->
+                <div class="card wide">
+                    <h2>⚡ Current Acceleration</h2>
+                    <div class="accel-values">
+                        <div class="accel-axis">
+                            <div class="label">X-Axis</div>
+                            <div class="value" id="accel_x">--</div>
+                            <div class="unit">g</div>
+                        </div>
+                        <div class="accel-axis">
+                            <div class="label">Y-Axis</div>
+                            <div class="value" id="accel_y">--</div>
+                            <div class="unit">g</div>
+                        </div>
+                        <div class="accel-axis">
+                            <div class="label">Z-Axis</div>
+                            <div class="value" id="accel_z">--</div>
+                            <div class="unit">g</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Acceleration Magnitude -->
+                <div class="card accent">
+                    <h2>📈 Magnitude</h2>
+                    <div class="value" id="accel_norm">--</div>
+                    <div class="unit">g</div>
+                </div>
+                
+                <!-- Sample Rate -->
+                <div class="card accent">
+                    <h2>🔄 Sample Rate</h2>
+                    <div class="value" id="sample_rate">--</div>
+                    <div class="unit">Hz</div>
+                </div>
+                
+                <!-- Data Rate -->
+                <div class="card">
+                    <h2>💾 Data Rate</h2>
+                    <div class="value" id="data_rate">--</div>
+                    <div class="unit">Mbps</div>
+                </div>
+                
+                <!-- Total Samples -->
+                <div class="card">
+                    <h2>📊 Total Samples</h2>
+                    <div class="value" id="total_samples">--</div>
+                    <div class="unit">samples</div>
+                </div>
+                
+                <!-- Packet Drops -->
+                <div class="card">
+                    <h2>⚠️ Packet Drops</h2>
+                    <div class="value" id="total_drops">--</div>
+                    <div class="unit">packets</div>
+                </div>
+                
+                <!-- Buffer Size -->
+                <div class="card">
+                    <h2>🔧 Buffer Size</h2>
+                    <div class="value" id="buffer_size">--</div>
+                    <div class="unit">packets</div>
+                </div>
+                
+                <!-- Uptime -->
+                <div class="card">
+                    <h2>⏱️ Uptime</h2>
+                    <div class="value" id="uptime">--</div>
+                    <div class="unit">seconds</div>
+                </div>
+                
+                <!-- Sample ID -->
+                <div class="card">
+                    <h2>🔢 Sample ID</h2>
+                    <div class="value" id="sample_id">--</div>
+                    <div class="unit">current</div>
+                </div>
+            </div>
+            
+            <!-- Real-time Chart -->
+            <div class="card full-width" style="margin-bottom: 20px;">
+                <h2>📈 Real-time Acceleration (Last 1 Second)</h2>
+                <div class="chart-container">
+                    <canvas id="accelChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="status-bar" id="status">
+                <div class="status-info">
+                    <span class="status-indicator" id="statusIndicator"></span>
+                    <span id="statusText">Waiting for data...</span>
+                </div>
+                <div id="lastUpdate">Last update: Never</div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="/static/dashboard.js"></script>
+</body>
+</html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Accelerometer Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="nav-header">
+            <h1>📊 ESP32 Accelerometer Dashboard</h1>
+            <div class="nav-links">
+                <a href="/" class="nav-link active">Dashboard</a>
+                <a href="/settings" class="nav-link">Settings</a>
+            </div>
+        </div>
+        <div class="subtitle">Real-time 32 kHz High-Speed Data Stream</div>
         * {
             margin: 0;
             padding: 0;

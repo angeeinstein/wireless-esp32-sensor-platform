@@ -542,6 +542,11 @@ def index():
     """Render the main dashboard page"""
     return render_template('index.html')
 
+@app.route('/settings')
+def settings():
+    """Render the settings page"""
+    return render_template('settings.html')
+
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
     """Get current stream statistics"""

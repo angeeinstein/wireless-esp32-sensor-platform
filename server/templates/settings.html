@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - ESP32 Accelerometer</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <!-- Toast notification container -->
+    <div class="toast-container" id="toastContainer"></div>
+    
+    <div class="container">
+        <div class="nav-header">
+            <h1>⚙️ Settings</h1>
+            <div class="nav-links">
+                <a href="/" class="nav-link">Dashboard</a>
+                <a href="/settings" class="nav-link active">Settings</a>
+            </div>
+        </div>
+        
+        <!-- Data Management -->
+        <div class="settings-section">
+            <h3>🗄️ Data Management</h3>
+            
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Data Retention Period</div>
+                    <div class="setting-description">Automatically delete data older than this many hours (0 = keep forever)</div>
+                </div>
+                <div class="setting-control">
+                    <input type="number" id="retentionHours" min="0" step="1" value="24">
+                    <span>hours</span>
+                    <button class="btn btn-primary" onclick="saveRetention()">Save</button>
+                </div>
+            </div>
+            
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Clear All Data</div>
+                    <div class="setting-description">Permanently delete all recorded samples from database</div>
+                </div>
+                <div class="setting-control">
+                    <button class="btn btn-danger" onclick="clearAllData()">Clear Database</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- ESP32 Control -->
+        <div class="settings-section">
+            <h3>🎛️ ESP32 Control</h3>
+            
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">ESP32 IP Address</div>
+                    <div class="setting-description">Enter the IP address of your ESP32 device</div>
+                </div>
+                <div class="setting-control">
+                    <input type="text" id="espIp" placeholder="192.168.1.100">
+                </div>
+            </div>
+            
+            <div class="esp-control-grid">
+                <button class="btn btn-primary" onclick="sendESPCommand('/status', 'GET')">Get Status</button>
+                <button class="btn btn-primary" onclick="sendESPCommand('/config', 'GET')">Get Config</button>
+                <button class="btn btn-secondary" onclick="sendESPCommand('/restart', 'POST')">Restart ESP</button>
+                <button class="btn btn-secondary" onclick="sendESPCommand('/wifi/scan', 'GET')">Scan WiFi</button>
+            </div>
+        </div>
+        
+        <!-- Database Info -->
+        <div class="settings-section">
+            <h3>📊 Database Statistics</h3>
+            <div id="dbStats">
+                <div class="setting-row">
+                    <div class="setting-label">Total Samples</div>
+                    <div id="dbTotalSamples">--</div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-label">Database Size</div>
+                    <div id="dbSize">--</div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-label">Time Span</div>
+                    <div id="dbTimeSpan">--</div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-label">Write Queue</div>
+                    <div id="dbQueueSize">--</div>
+                </div>
+            </div>
+            <button class="btn btn-primary" onclick="loadDatabaseStats()" style="margin-top: 15px;">Refresh Stats</button>
+        </div>
+    </div>
+    
+    <script src="/static/settings.js"></script>
+</body>
+</html>
