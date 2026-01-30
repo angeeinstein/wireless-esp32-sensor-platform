@@ -185,16 +185,260 @@
             font-size: 1.5em;
             margin-top: 50px;
         }
+        
+        /* Navigation tabs */
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+        
+        .nav-tab {
+            background: white;
+            color: #1e3c72;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .nav-tab:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+        }
+        
+        .nav-tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Settings page */
+        .settings-section {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        .settings-section h3 {
+            color: #1e3c72;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .setting-row:last-child {
+            border-bottom: none;
+        }
+        
+        .setting-label {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .setting-description {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .setting-control {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .setting-control input[type="number"] {
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+            width: 100px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #f44336 0%, #e91e63 100%);
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(244, 67, 54, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
+        /* ESP32 Control */
+        .esp-control-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .esp-control-input {
+            grid-column: 1 / -1;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+        }
+        
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 400px;
+        }
+        
+        .toast {
+            background: white;
+            border-radius: 10px;
+            padding: 15px 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            animation: slideIn 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .toast::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+        }
+        
+        .toast.success::before {
+            background: #4caf50;
+        }
+        
+        .toast.error::before {
+            background: #f44336;
+        }
+        
+        .toast.info::before {
+            background: #2196f3;
+        }
+        
+        .toast-icon {
+            font-size: 1.5em;
+        }
+        
+        .toast-content {
+            flex: 1;
+        }
+        
+        .toast-title {
+            font-weight: 600;
+            margin-bottom: 3px;
+        }
+        
+        .toast-message {
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
     </style>
 </head>
 <body>
+    <!-- Toast notification container -->
+    <div class="toast-container" id="toastContainer"></div>
+    
     <div class="container">
         <h1>📊 ESP32 Accelerometer Dashboard</h1>
         <div class="subtitle">Real-time 32 kHz High-Speed Data Stream</div>
         
+        <!-- Navigation Tabs -->
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="switchTab('dashboard')">Dashboard</button>
+            <button class="nav-tab" onclick="switchTab('settings')">Settings</button>
+        </div>
+        
         <div id="loading" class="loading">Loading sensor data...</div>
         
-        <div id="content" style="display: none;">
+        <!-- Dashboard Tab -->
+        <div id="dashboard-tab" class="tab-content active" style="display: none;">
             <div class="dashboard">
                 <!-- Current Acceleration -->
                 <div class="card wide">
@@ -289,6 +533,81 @@
                     <span id="statusText">Waiting for data...</span>
                 </div>
                 <div id="lastUpdate">Last update: Never</div>
+            </div>
+        </div>
+        
+        <!-- Settings Tab -->
+        <div id="settings-tab" class="tab-content">
+            <!-- Data Management -->
+            <div class="settings-section">
+                <h3>🗄️ Data Management</h3>
+                
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">Data Retention Period</div>
+                        <div class="setting-description">Automatically delete data older than this many hours (0 = keep forever)</div>
+                    </div>
+                    <div class="setting-control">
+                        <input type="number" id="retentionHours" min="0" step="1" value="24">
+                        <button class="btn btn-primary" onclick="saveRetention()">Save</button>
+                    </div>
+                </div>
+                
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">Clear All Data</div>
+                        <div class="setting-description">Permanently delete all recorded samples from database</div>
+                    </div>
+                    <div class="setting-control">
+                        <button class="btn btn-danger" onclick="clearAllData()">Clear Database</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ESP32 Control -->
+            <div class="settings-section">
+                <h3>🎛️ ESP32 Control</h3>
+                
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">ESP32 IP Address</div>
+                        <div class="setting-description">Enter the IP address of your ESP32 device</div>
+                    </div>
+                    <div class="setting-control">
+                        <input type="text" id="espIp" class="esp-control-input" placeholder="192.168.1.100" style="width: 200px;">
+                    </div>
+                </div>
+                
+                <div class="esp-control-grid">
+                    <button class="btn btn-primary" onclick="sendESPCommand('/status', 'GET')">Get Status</button>
+                    <button class="btn btn-primary" onclick="sendESPCommand('/config', 'GET')">Get Config</button>
+                    <button class="btn btn-secondary" onclick="sendESPCommand('/restart', 'POST')">Restart ESP</button>
+                    <button class="btn btn-secondary" onclick="sendESPCommand('/wifi/scan', 'GET')">Scan WiFi</button>
+                </div>
+            </div>
+            
+            <!-- Database Info -->
+            <div class="settings-section">
+                <h3>📊 Database Statistics</h3>
+                <div id="dbStats">
+                    <div class="setting-row">
+                        <div class="setting-label">Total Samples</div>
+                        <div id="dbTotalSamples">--</div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-label">Database Size</div>
+                        <div id="dbSize">--</div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-label">Time Span</div>
+                        <div id="dbTimeSpan">--</div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-label">Write Queue</div>
+                        <div id="dbQueueSize">--</div>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="loadDatabaseStats()" style="margin-top: 15px;">Refresh Stats</button>
             </div>
         </div>
     </div>
@@ -418,7 +737,7 @@
         socket.on('connect', () => {
             console.log('WebSocket connected');
             document.getElementById('loading').style.display = 'none';
-            document.getElementById('content').style.display = 'block';
+            document.getElementById('dashboard-tab').style.display = 'block';
         });
         
         socket.on('disconnect', () => {
@@ -491,6 +810,180 @@
         // Update chart every 500ms (still via HTTP for bulk data)
         updateChart();
         setInterval(updateChart, 500);
+        
+        // Load settings on page load
+        loadSettings();
+        
+        // ===== SETTINGS FUNCTIONS =====
+        
+        function switchTab(tab) {
+            // Update tab buttons
+            document.querySelectorAll('.nav-tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`${tab}-tab`).classList.add('active');
+            
+            // Load data for settings tab
+            if (tab === 'settings') {
+                loadSettings();
+                loadDatabaseStats();
+            }
+        }
+        
+        function loadSettings() {
+            // Load retention period
+            fetch('/api/settings/retention')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        document.getElementById('retentionHours').value = data.retention_hours;
+                    }
+                })
+                .catch(err => console.error('Error loading settings:', err));
+        }
+        
+        function saveRetention() {
+            const hours = parseFloat(document.getElementById('retentionHours').value);
+            
+            fetch('/api/settings/retention', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({retention_hours: hours})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast('success', 'Settings Saved', data.message);
+                } else {
+                    showToast('error', 'Error', data.message);
+                }
+            })
+            .catch(err => {
+                showToast('error', 'Error', 'Failed to save settings');
+                console.error(err);
+            });
+        }
+        
+        function clearAllData() {
+            if (!confirm('⚠️ Are you sure you want to delete ALL data? This cannot be undone!')) {
+                return;
+            }
+            
+            fetch('/api/database/clear', {
+                method: 'POST'
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast('success', 'Database Cleared', data.message);
+                    loadDatabaseStats();
+                } else {
+                    showToast('error', 'Error', data.message);
+                }
+            })
+            .catch(err => {
+                showToast('error', 'Error', 'Failed to clear database');
+                console.error(err);
+            });
+        }
+        
+        function loadDatabaseStats() {
+            fetch('/api/database/stats')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        const db = data.database;
+                        document.getElementById('dbTotalSamples').textContent = 
+                            formatNumber(db.total_samples);
+                        document.getElementById('dbSize').textContent = 
+                            db.size_mb.toFixed(2) + ' MB';
+                        document.getElementById('dbTimeSpan').textContent = 
+                            db.time_span_hours.toFixed(2) + ' hours';
+                        document.getElementById('dbQueueSize').textContent = 
+                            `${db.write_queue_size} / ${db.write_queue_max}`;
+                    }
+                })
+                .catch(err => console.error('Error loading database stats:', err));
+        }
+        
+        function sendESPCommand(endpoint, method) {
+            const espIp = document.getElementById('espIp').value.trim();
+            
+            if (!espIp) {
+                showToast('error', 'Missing IP', 'Please enter ESP32 IP address');
+                return;
+            }
+            
+            showToast('info', 'Sending Command', `${method} ${endpoint}...`);
+            
+            fetch('/api/esp32/command', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    esp_ip: espIp,
+                    endpoint: endpoint,
+                    method: method
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    const response = JSON.stringify(data.esp_response, null, 2);
+                    showToast('success', 'ESP32 Response', response);
+                } else {
+                    showToast('error', 'ESP32 Error', data.message);
+                }
+            })
+            .catch(err => {
+                showToast('error', 'Connection Error', 'Failed to communicate with ESP32');
+                console.error(err);
+            });
+        }
+        
+        // ===== TOAST NOTIFICATION SYSTEM =====
+        
+        let toastId = 0;
+        
+        function showToast(type, title, message) {
+            const container = document.getElementById('toastContainer');
+            const id = `toast-${toastId++}`;
+            
+            const icons = {
+                success: '✅',
+                error: '❌',
+                info: 'ℹ️'
+            };
+            
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.id = id;
+            toast.innerHTML = `
+                <div class="toast-icon">${icons[type] || 'ℹ️'}</div>
+                <div class="toast-content">
+                    <div class="toast-title">${title}</div>
+                    <div class="toast-message">${message}</div>
+                </div>
+            `;
+            
+            container.appendChild(toast);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                const toastElement = document.getElementById(id);
+                if (toastElement) {
+                    toastElement.style.animation = 'slideOut 0.3s ease';
+                    setTimeout(() => {
+                        toastElement.remove();
+                    }, 300);
+                }
+            }, 5000);
+        }
     </script>
 </body>
 </html>

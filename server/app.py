@@ -779,6 +779,118 @@ def get_database_stats():
             'message': str(e)
         }), 500
 
+@app.route('/api/settings/retention', methods=['GET', 'POST'])
+def manage_retention():
+    """Get or set data retention period"""
+    global DB_RETENTION_HOURS
+    
+    if request.method == 'GET':
+        return jsonify({
+            'status': 'success',
+            'retention_hours': DB_RETENTION_HOURS
+        }), 200
+    
+    elif request.method == 'POST':
+        try:
+            data = request.get_json()
+            hours = data.get('retention_hours')
+            
+            if hours is None:
+                return jsonify({'status': 'error', 'message': 'retention_hours required'}), 400
+            
+            hours = float(hours)
+            if hours < 0:
+                return jsonify({'status': 'error', 'message': 'retention_hours must be >= 0'}), 400
+            
+            DB_RETENTION_HOURS = hours
+            logger.info(f"Data retention updated to {hours} hours")
+            
+            return jsonify({
+                'status': 'success',
+                'retention_hours': DB_RETENTION_HOURS,
+                'message': f'Retention period set to {hours} hours'
+            }), 200
+            
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/database/clear', methods=['POST'])
+def clear_database():
+    """Delete all data from database"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get count before deletion
+        cursor.execute("SELECT COUNT(*) FROM samples")
+        count_before = cursor.fetchone()[0]
+        
+        # Delete all samples
+        cursor.execute("DELETE FROM samples")
+        conn.commit()
+        
+        # Vacuum to reclaim space
+        cursor.execute("VACUUM")
+        
+        conn.close()
+        
+        logger.info(f"Database cleared: {count_before} samples deleted")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Deleted {count_before} samples',
+            'samples_deleted': count_before
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error clearing database: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/esp32/command', methods=['POST'])
+def send_esp32_command():
+    """Send command to ESP32 and return response"""
+    try:
+        import requests
+        
+        data = request.get_json()
+        esp_ip = data.get('esp_ip')
+        endpoint = data.get('endpoint', '/status')
+        method = data.get('method', 'GET').upper()
+        body = data.get('body')
+        
+        if not esp_ip:
+            return jsonify({'status': 'error', 'message': 'esp_ip required'}), 400
+        
+        # Construct URL
+        url = f"http://{esp_ip}{endpoint}"
+        
+        # Send request to ESP32
+        if method == 'GET':
+            response = requests.get(url, timeout=5)
+        elif method == 'POST':
+            response = requests.post(url, json=body, timeout=5)
+        else:
+            return jsonify({'status': 'error', 'message': f'Unsupported method: {method}'}), 400
+        
+        # Return ESP32 response
+        try:
+            response_json = response.json()
+        except:
+            response_json = {'raw_response': response.text}
+        
+        return jsonify({
+            'status': 'success',
+            'esp_status_code': response.status_code,
+            'esp_response': response_json
+        }), 200
+        
+    except requests.exceptions.Timeout:
+        return jsonify({'status': 'error', 'message': 'ESP32 connection timeout'}), 504
+    except requests.exceptions.ConnectionError:
+        return jsonify({'status': 'error', 'message': 'Cannot connect to ESP32'}), 503
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
