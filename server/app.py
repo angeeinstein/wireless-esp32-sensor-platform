@@ -145,22 +145,24 @@ def init_database():
     # Synchronous=NORMAL for better performance (still safe with WAL)
     cursor.execute("PRAGMA synchronous=NORMAL")
     
-    # Create table with appropriate indexes
+    # Create optimized table with integer storage (preserves 18-bit sensor resolution)
+    # Values stored as microunits (value × 1,000,000) to preserve precision
+    # timestamp as milliseconds from epoch
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS samples (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp REAL NOT NULL,
+            timestamp_ms INTEGER NOT NULL,
             sample_id INTEGER NOT NULL,
-            ax_g REAL NOT NULL,
-            ay_g REAL NOT NULL,
-            az_g REAL NOT NULL
+            ax_micro INTEGER NOT NULL,
+            ay_micro INTEGER NOT NULL,
+            az_micro INTEGER NOT NULL
         )
     """)
     
     # Index on timestamp for time-range queries
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_timestamp 
-        ON samples(timestamp)
+        ON samples(timestamp_ms)
     """)
     
     # Index on sample_id for sequence queries
@@ -194,11 +196,11 @@ def db_writer_thread():
             try:
                 sample = db_write_queue.get(timeout=0.1)
                 batch.append((
-                    sample.timestamp,
+                    int(sample.timestamp * 1000),  # Convert to milliseconds
                     sample.sample_id,
-                    sample.ax_g,
-                    sample.ay_g,
-                    sample.az_g
+                    int(sample.ax_g * 1000000),  # Store as microunits (preserves 6 decimals)
+                    int(sample.ay_g * 1000000),
+                    int(sample.az_g * 1000000)
                 ))
             except queue.Empty:
                 sample = None
@@ -210,7 +212,7 @@ def db_writer_thread():
             
             if should_write:
                 cursor.executemany(
-                    "INSERT INTO samples (timestamp, sample_id, ax_g, ay_g, az_g) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO samples (timestamp_ms, sample_id, ax_micro, ay_micro, az_micro) VALUES (?, ?, ?, ?, ?)",
                     batch
                 )
                 conn.commit()
@@ -235,7 +237,7 @@ def db_writer_thread():
     if batch:
         try:
             cursor.executemany(
-                "INSERT INTO samples (timestamp, sample_id, ax_g, ay_g, az_g) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO samples (timestamp_ms, sample_id, ax_micro, ay_micro, az_micro) VALUES (?, ?, ?, ?, ?)",
                 batch
             )
             conn.commit()
@@ -248,13 +250,13 @@ def db_writer_thread():
 
 def cleanup_old_data(cursor, conn):
     """Remove data older than retention period"""
-    cutoff = time.time() - (DB_RETENTION_HOURS * 3600)
+    cutoff_ms = int((time.time() - (DB_RETENTION_HOURS * 3600)) * 1000)
     
-    cursor.execute("SELECT COUNT(*) FROM samples WHERE timestamp < ?", (cutoff,))
+    cursor.execute("SELECT COUNT(*) FROM samples WHERE timestamp_ms < ?", (cutoff_ms,))
     count = cursor.fetchone()[0]
     
     if count > 0:
-        cursor.execute("DELETE FROM samples WHERE timestamp < ?", (cutoff,))
+        cursor.execute("DELETE FROM samples WHERE timestamp_ms < ?", (cutoff_ms,))
         conn.commit()
         print(f"[DB] Cleaned up {count} old samples (>{DB_RETENTION_HOURS}h)")
         
@@ -638,16 +640,22 @@ def export_samples():
             try:
                 conn = get_db_connection()
                 cursor = conn.cursor()
+                cutoff_ms = int(cutoff * 1000)
                 cursor.execute(
-                    "SELECT timestamp, sample_id, ax_g, ay_g, az_g FROM samples WHERE timestamp >= ? ORDER BY timestamp",
-                    (cutoff,)
+                    "SELECT timestamp_ms, sample_id, ax_micro, ay_micro, az_micro FROM samples WHERE timestamp_ms >= ? ORDER BY timestamp_ms",
+                    (cutoff_ms,)
                 )
                 rows = cursor.fetchall()
                 conn.close()
                 
                 csv_lines = ["timestamp,sample_id,ax_g,ay_g,az_g"]
                 for row in rows:
-                    csv_lines.append(f"{row['timestamp']:.6f},{row['sample_id']},{row['ax_g']:.6f},{row['ay_g']:.6f},{row['az_g']:.6f}")
+                    # Convert back from integer storage to floats
+                    timestamp = row['timestamp_ms'] / 1000.0
+                    ax_g = row['ax_micro'] / 1000000.0
+                    ay_g = row['ay_micro'] / 1000000.0
+                    az_g = row['az_micro'] / 1000000.0
+                    csv_lines.append(f"{timestamp:.6f},{row['sample_id']},{ax_g:.6f},{ay_g:.6f},{az_g:.6f}")
                 
             except Exception as e:
                 print(f"[API] Database export failed, using memory: {e}")
@@ -714,23 +722,32 @@ def get_sample_history():
             # Use every Nth sample
             step = total_count // max_points
             cursor.execute(
-                f"""SELECT timestamp, sample_id, ax_g, ay_g, az_g 
+                f"""SELECT timestamp_ms, sample_id, ax_micro, ay_micro, az_micro 
                    FROM samples 
-                   WHERE timestamp >= ? AND timestamp <= ? 
+                   WHERE timestamp_ms >= ? AND timestamp_ms <= ? 
                    AND (rowid % {step}) = 0
-                   ORDER BY timestamp""",
-                (start_time, end_time)
+                   ORDER BY timestamp_ms""",
+                (int(start_time * 1000), int(end_time * 1000))
             )
         else:
             cursor.execute(
-                "SELECT timestamp, sample_id, ax_g, ay_g, az_g FROM samples WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp",
-                (start_time, end_time)
+                "SELECT timestamp_ms, sample_id, ax_micro, ay_micro, az_micro FROM samples WHERE timestamp_ms >= ? AND timestamp_ms <= ? ORDER BY timestamp_ms",
+                (int(start_time * 1000), int(end_time * 1000))
             )
         
         rows = cursor.fetchall()
         conn.close()
         
-        samples = [dict(row) for row in rows]
+        # Convert from integer storage to float values
+        samples = []
+        for row in rows:
+            samples.append({
+                'timestamp': row['timestamp_ms'] / 1000.0,
+                'sample_id': row['sample_id'],
+                'ax_g': row['ax_micro'] / 1000000.0,
+                'ay_g': row['ay_micro'] / 1000000.0,
+                'az_g': row['az_micro'] / 1000000.0
+            })
         
         return jsonify({
             'status': 'success',
@@ -774,10 +791,10 @@ def get_database_stats():
                 total_samples = cursor.fetchone()[0]
                 
                 # Time range - this is relatively fast with index
-                cursor.execute("SELECT MIN(timestamp), MAX(timestamp) FROM samples")
+                cursor.execute("SELECT MIN(timestamp_ms), MAX(timestamp_ms) FROM samples")
                 row = cursor.fetchone()
-                min_time = row[0] if row[0] else 0
-                max_time = row[1] if row[1] else 0
+                min_time = (row[0] / 1000.0) if row[0] else 0
+                max_time = (row[1] / 1000.0) if row[1] else 0
                 
                 conn.close()
                 
@@ -882,9 +899,9 @@ def database_diagnostics():
         # Check time span and calculate expected vs actual rate
         time_span = cursor.execute("""
             SELECT 
-                MIN(timestamp) as min_ts,
-                MAX(timestamp) as max_ts,
-                MAX(timestamp) - MIN(timestamp) as span_seconds
+                MIN(timestamp_ms) / 1000.0 as min_ts,
+                MAX(timestamp_ms) / 1000.0 as max_ts,
+                (MAX(timestamp_ms) - MIN(timestamp_ms)) / 1000.0 as span_seconds
             FROM samples
         """).fetchone()
         
@@ -903,8 +920,9 @@ def database_diagnostics():
         
         conn.close()
         
-        # Calculate expected size (very rough estimate)
-        bytes_per_row = 8 + 4 + 8*4  # id(8) + sample_id(4) + 4 floats(8 each)
+        # Calculate expected size with optimized schema
+        # New format: id(8) + timestamp_ms(8) + sample_id(4) + 3×accel(4 each) = 32 bytes per row
+        bytes_per_row = 32
         expected_size_mb = (total_samples * bytes_per_row) / (1024 * 1024)
         
         avg_rate = total_samples / time_span[2] if time_span[2] > 0 else 0
@@ -956,8 +974,8 @@ def manual_cleanup():
         cursor = conn.cursor()
         
         # Count old data
-        cutoff = time.time() - (DB_RETENTION_HOURS * 3600)
-        cursor.execute("SELECT COUNT(*) FROM samples WHERE timestamp < ?", (cutoff,))
+        cutoff_ms = int((time.time() - (DB_RETENTION_HOURS * 3600)) * 1000)
+        cursor.execute("SELECT COUNT(*) FROM samples WHERE timestamp_ms < ?", (cutoff_ms,))
         old_count = cursor.fetchone()[0]
         
         # Get total count before
@@ -969,7 +987,7 @@ def manual_cleanup():
         
         if old_count > 0:
             # Delete old data
-            cursor.execute("DELETE FROM samples WHERE timestamp < ?", (cutoff,))
+            cursor.execute("DELETE FROM samples WHERE timestamp_ms < ?", (cutoff_ms,))
             conn.commit()
             logger.info(f"Cleanup: Deleted {old_count} old samples (>{DB_RETENTION_HOURS}h)")
         
