@@ -7,6 +7,7 @@ Uses SQLite for persistent storage with batched writes for high-speed operation
 
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
+from flask_socketio import SocketIO, emit
 from datetime import datetime
 import os
 import socket
@@ -34,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # ===== UDP RECEIVER CONFIGURATION =====
 UDP_PORT = 9999
@@ -480,6 +482,15 @@ def udp_receiver_thread():
                 current_stats.total_samples = total_samples_global
                 current_stats.uptime_sec = now - start_time
                 current_stats.is_receiving = True
+                
+                # Emit stats update via WebSocket
+                socketio.emit('stats_update', asdict(current_stats))
+            
+            # Get latest sample for real-time display
+            with recent_samples_lock:
+                if recent_samples:
+                    latest = asdict(recent_samples[-1])
+                    socketio.emit('sample_update', latest)
             
             logger.info(f"UDP {mbit:5.2f} Mbit/s  {sps:7.0f} samp/s  |a|={mean_norm:.4f} g  "
                   f"drops={drops}  buf={len(reorder)}")

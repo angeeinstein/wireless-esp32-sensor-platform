@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ESP32 Accelerometer Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -293,6 +294,9 @@
     </div>
     
     <script>
+        // Initialize Socket.IO connection
+        const socket = io();
+        
         // Initialize Chart.js
         let accelChart = null;
         
@@ -410,99 +414,81 @@
             return num.toFixed(decimals);
         }
         
-        function updateDashboard() {
-            // Fetch latest sample for real-time acceleration
-            Promise.all([
-                fetch('/api/samples/latest').then(r => r.json()),
-                fetch('/api/stats').then(r => r.json())
-            ])
-            .then(([sampleResult, statsResult]) => {
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('content').style.display = 'block';
+        // WebSocket event handlers
+        socket.on('connect', () => {
+            console.log('WebSocket connected');
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('content').style.display = 'block';
+        });
+        
+        socket.on('disconnect', () => {
+            console.log('WebSocket disconnected');
+            const status = document.getElementById('status');
+            const indicator = document.getElementById('statusIndicator');
+            status.className = 'status-bar disconnected';
+            indicator.className = 'status-indicator inactive';
+            document.getElementById('statusText').textContent = 
+                '❌ Connection lost - Reconnecting...';
+        });
+        
+        // Real-time sample updates
+        socket.on('sample_update', (sample) => {
+            if (sample) {
+                document.getElementById('accel_x').textContent = sample.ax_g.toFixed(3);
+                document.getElementById('accel_y').textContent = sample.ay_g.toFixed(3);
+                document.getElementById('accel_z').textContent = sample.az_g.toFixed(3);
+                document.getElementById('sample_id').textContent = formatNumber(sample.sample_id);
                 
-                // Update acceleration values
-                if (sampleResult.sample) {
-                    const sample = sampleResult.sample;
-                    document.getElementById('accel_x').textContent = sample.ax_g.toFixed(3);
-                    document.getElementById('accel_y').textContent = sample.ay_g.toFixed(3);
-                    document.getElementById('accel_z').textContent = sample.az_g.toFixed(3);
-                    document.getElementById('sample_id').textContent = formatNumber(sample.sample_id);
-                    
-                    // Calculate magnitude
-                    const mag = Math.sqrt(
-                        sample.ax_g * sample.ax_g + 
-                        sample.ay_g * sample.ay_g + 
-                        sample.az_g * sample.az_g
-                    );
-                    document.getElementById('accel_norm').textContent = mag.toFixed(3);
-                } else {
-                    document.getElementById('accel_x').textContent = '--';
-                    document.getElementById('accel_y').textContent = '--';
-                    document.getElementById('accel_z').textContent = '--';
-                    document.getElementById('accel_norm').textContent = '--';
-                    document.getElementById('sample_id').textContent = '--';
-                }
+                // Calculate magnitude
+                const mag = Math.sqrt(
+                    sample.ax_g * sample.ax_g + 
+                    sample.ay_g * sample.ay_g + 
+                    sample.az_g * sample.az_g
+                );
+                document.getElementById('accel_norm').textContent = mag.toFixed(3);
+            }
+        });
+        
+        // Real-time stats updates
+        socket.on('stats_update', (stats) => {
+            if (stats) {
+                document.getElementById('sample_rate').textContent = 
+                    formatNumber(stats.samples_per_sec, 0);
+                document.getElementById('data_rate').textContent = 
+                    stats.mbit_per_sec.toFixed(2);
+                document.getElementById('total_samples').textContent = 
+                    formatNumber(stats.total_samples);
+                document.getElementById('total_drops').textContent = 
+                    formatNumber(stats.total_drops);
+                document.getElementById('buffer_size').textContent = 
+                    formatNumber(stats.buffer_size);
+                document.getElementById('uptime').textContent = 
+                    formatNumber(stats.uptime_sec, 1);
                 
-                // Update statistics
-                if (statsResult.stats) {
-                    const stats = statsResult.stats;
-                    document.getElementById('sample_rate').textContent = 
-                        formatNumber(stats.samples_per_sec, 0);
-                    document.getElementById('data_rate').textContent = 
-                        stats.mbit_per_sec.toFixed(2);
-                    document.getElementById('total_samples').textContent = 
-                        formatNumber(stats.total_samples);
-                    document.getElementById('total_drops').textContent = 
-                        formatNumber(stats.total_drops);
-                    document.getElementById('buffer_size').textContent = 
-                        formatNumber(stats.buffer_size);
-                    document.getElementById('uptime').textContent = 
-                        formatNumber(stats.uptime_sec, 1);
-                    
-                    // Update status
-                    const status = document.getElementById('status');
-                    const indicator = document.getElementById('statusIndicator');
-                    const statusText = document.getElementById('statusText');
-                    
-                    if (stats.is_receiving) {
-                        status.className = 'status-bar connected';
-                        indicator.className = 'status-indicator active';
-                        statusText.textContent = '✅ Connected - Receiving data';
-                    } else {
-                        status.className = 'status-bar disconnected';
-                        indicator.className = 'status-indicator inactive';
-                        statusText.textContent = '⏳ Waiting for data stream...';
-                    }
-                    
-                    document.getElementById('lastUpdate').textContent = 
-                        'Last update: ' + new Date().toLocaleTimeString();
-                } else {
-                    document.getElementById('statusText').textContent = 
-                        '⏳ Waiting for first data packet...';
-                }
-            })
-            .catch(error => {
-                console.error('Error fetching data:', error);
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('content').style.display = 'block';
-                
+                // Update status
                 const status = document.getElementById('status');
                 const indicator = document.getElementById('statusIndicator');
-                status.className = 'status-bar disconnected';
-                indicator.className = 'status-indicator inactive';
-                document.getElementById('statusText').textContent = 
-                    '❌ Connection error - Server unreachable';
-            });
-        }
+                const statusText = document.getElementById('statusText');
+                
+                if (stats.is_receiving) {
+                    status.className = 'status-bar connected';
+                    indicator.className = 'status-indicator active';
+                    statusText.textContent = '✅ Connected - Receiving data';
+                } else {
+                    status.className = 'status-bar disconnected';
+                    indicator.className = 'status-indicator inactive';
+                    statusText.textContent = '⏳ Waiting for data stream...';
+                }
+                
+                document.getElementById('lastUpdate').textContent = 
+                    'Last update: ' + new Date().toLocaleTimeString();
+            }
+        });
         
         // Initialize chart on page load
         initChart();
         
-        // Update dashboard stats every second
-        updateDashboard();
-        setInterval(updateDashboard, 1000);
-        
-        // Update chart every 500ms for smoother animation
+        // Update chart every 500ms (still via HTTP for bulk data)
         updateChart();
         setInterval(updateChart, 500);
     </script>
