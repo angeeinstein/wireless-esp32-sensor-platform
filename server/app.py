@@ -17,9 +17,20 @@ import threading
 import csv
 import sqlite3
 import queue
+import sys
+import logging
 from collections import deque
 from dataclasses import dataclass, asdict
 from typing import Optional, List
+
+# Setup logging to stdout (captured by systemd)
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(levelname)s: %(message)s',
+    stream=sys.stdout,
+    force=True
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -251,7 +262,7 @@ def udp_receiver_thread():
     """High-speed UDP receiver running in background thread"""
     global udp_running, current_stats, recent_samples, start_time
     
-    print(f"[UDP] Starting receiver on port {UDP_PORT}...")
+    logger.info(f"UDP Starting receiver on port {UDP_PORT}...")
     
     # Setup socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -259,7 +270,7 @@ def udp_receiver_thread():
     sock.settimeout(1.0)  # 1 second timeout to allow clean shutdown
     sock.bind(("0.0.0.0", UDP_PORT))
     
-    print(f"[UDP] Listening on UDP/{UDP_PORT}")
+    logger.info(f"UDP Listening on UDP/{UDP_PORT}")
     
     # CSV logging
     csvf = None
@@ -470,7 +481,7 @@ def udp_receiver_thread():
                 current_stats.uptime_sec = now - start_time
                 current_stats.is_receiving = True
             
-            print(f"[UDP] {mbit:5.2f} Mbit/s  {sps:7.0f} samp/s  |a|={mean_norm:.4f} g  "
+            logger.info(f"UDP {mbit:5.2f} Mbit/s  {sps:7.0f} samp/s  |a|={mean_norm:.4f} g  "
                   f"drops={drops}  buf={len(reorder)}")
             
             bytes_in = samp_in = 0
@@ -810,7 +821,7 @@ def stop_udp_receiver():
 init_database()
 start_db_writer()
 start_udp_receiver()
-print(f"[Server] Background threads started (UDP port {UDP_PORT}, DB batch size {DB_BATCH_SIZE})")
+logger.info(f"Server Background threads started (UDP port {UDP_PORT}, DB batch size {DB_BATCH_SIZE})")
 
 if __name__ == '__main__':
     # Get configuration from environment variables
