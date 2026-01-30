@@ -10,9 +10,9 @@
 
 // ===== DEFAULT WIFI CONFIGURATION =====
 // These can be overridden via configuration API
-String WIFI_SSID = "SensorNet";
-String WIFI_PASS = "supersecretpassword";
-String DEST_IP   = "192.168.1.213";
+String WIFI_SSID = "yourSSIDhere";
+String WIFI_PASS = "password123";
+String DEST_IP   = "192.168.1.158";
 uint16_t DEST_PORT = 9999;
 const uint16_t SRC_PORT  = 12345;
 
@@ -133,7 +133,7 @@ void send_data_frame(const uint8_t* payload, uint16_t n_samples){
   memcpy(p+UDP_HDR_BYTES, payload, n_samples*SSIZE);
   udp.beginPacket(DEST_IP.c_str(), DEST_PORT);
   udp.write(out_pkt, UDP_HDR_BYTES + n_samples*SSIZE);
-  udp.endPacket();
+  udp.endPacket(); // Don't check errors - let FEC handle drops
 }
 
 void send_parity_frame(const uint8_t* payload, uint32_t base_seq){
@@ -149,7 +149,7 @@ void send_parity_frame(const uint8_t* payload, uint32_t base_seq){
   memcpy(p+UDP_HDR_BYTES, payload, NSAMP_MAX*SSIZE);
   udp.beginPacket(DEST_IP.c_str(), DEST_PORT);
   udp.write(out_pkt, UDP_HDR_BYTES + NSAMP_MAX*SSIZE);
-  udp.endPacket();
+  udp.endPacket(); // Don't check errors - let FEC handle drops
 }
 
 void sendAnnouncement() {
@@ -158,8 +158,8 @@ void sendAnnouncement() {
   json += "\"sensor_id\":\"" + sensorID + "\",";
   json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
   json += "\"mac\":\"" + WiFi.macAddress() + "\",";
-  json += "\"sensor_type\":\"" + sensorType + "\",";
-  json += "\"firmware\":\"" + String(firmwareVersion) + "\",";
+  json += "\"sensor_type\":\"" + String(sensorType) + "\",";
+  json += "\"firmware\":\"" + String(firmwareVersion) + "\";",
   json += "\"sample_rate\":32000,";
   json += "\"multi_value\":true,";
   json += "\"sensor_keys\":[\"accel_x\",\"accel_y\",\"accel_z\"]";
@@ -206,7 +206,10 @@ bool icm_init(){
   spi.beginTransaction(SPISettings(SPI_HZ_INIT, MSBFIRST, SPI_MODE0));
   uint8_t who = rd8(REG_WHO_AM_I);
   Serial.printf("WHO_AM_I=0x%02X (expect 0x47)\n", who);
-  if (who != WHOAMI_EXPECT) return false;
+  if (who != WHOAMI_EXPECT) {
+    spi.endTransaction();
+    return false;
+  }
 
   // Switch to run speed (MODE0, 24 MHz)
   spi.endTransaction();
@@ -248,6 +251,7 @@ bool icm_init(){
   }
 
   Serial.printf("ACCEL_CFG0=0x%02X  FIFO_CFG=0x%02X  FIFO_CFG1=0x%02X\n", a0, fc, f1);
+  // Leave transaction active at run speed for loop() to use
   return (a0==0x61) && (fc==0x01 || fc==0x40) && ((f1&0x41)==0x41);
 }
 
@@ -259,8 +263,8 @@ void setupHTTPAPI() {
     String json = "{";
     json += "\"status\":\"success\",";
     json += "\"sensor_id\":\"" + sensorID + "\",";
-    json += "\"sensor_type\":\"" + sensorType + "\",";
-    json += "\"firmware\":\"" + String(firmwareVersion) + "\",";
+    json += "\"sensor_type\":\"" + String(sensorType) + "\",";
+    json += "\"firmware\":\"" + String(firmwareVersion) + "\";",
     json += "\"sample_rate\":32000,";
     json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
     json += "\"mac\":\"" + WiFi.macAddress() + "\",";
@@ -435,7 +439,14 @@ void setup(){
   // ===== INIT SPI & SENSOR =====
   pinMode(PIN_CS, OUTPUT); 
   cs_hi();
-  spi.begin(PIN_SCK, PIN_MISO, PIN_MOSI, PIN_CS);
+  spi.begin(PIN_SCK, PIN_MISO, PIN_MOSI, -1); // -1 = manual CS control
+  Serial.println("SPI initialized");
+  
+  // Test SPI before WiFi
+  spi.endTransaction();
+  spi.beginTransaction(SPISettings(SPI_HZ_INIT, MSBFIRST, SPI_MODE0));
+  Serial.printf("Pre-WiFi WHO_AM_I test: 0x%02X\n", rd8(REG_WHO_AM_I));
+  spi.endTransaction();
   
   // ===== CONNECT WIFI =====
   wifi_up();

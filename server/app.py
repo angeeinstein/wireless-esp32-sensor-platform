@@ -805,6 +805,13 @@ def stop_udp_receiver():
         udp_thread.join(timeout=3.0)
     print("[Server] UDP receiver stopped")
 
+# Initialize database and start background threads when module is loaded
+# This ensures they start even when running under Gunicorn
+init_database()
+start_db_writer()
+start_udp_receiver()
+print(f"[Server] Background threads started (UDP port {UDP_PORT}, DB batch size {DB_BATCH_SIZE})")
+
 if __name__ == '__main__':
     # Get configuration from environment variables
     host = os.getenv('FLASK_HOST', '0.0.0.0')
@@ -822,12 +829,6 @@ if __name__ == '__main__':
     print(f"Debug mode:     {debug}")
     print(f"CSV Logging:    {LOG_ENABLE} -> {LOG_PATH if LOG_ENABLE else 'disabled'}")
     print("========================================")
-    
-    # Start database writer first
-    start_db_writer()
-    
-    # Start UDP receiver
-    start_udp_receiver()
     
     try:
         app.run(host=host, port=port, debug=debug, use_reloader=False)
