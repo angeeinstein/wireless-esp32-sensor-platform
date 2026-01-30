@@ -3,7 +3,6 @@ const socket = io();
 
 // Initialize Chart.js
 let accelChart = null;
-const CHART_WINDOW_SECONDS = 5;  // Show 5 seconds of data for smooth display
 
 function initChart() {
     const ctx = document.getElementById('accelChart').getContext('2d');
@@ -43,7 +42,7 @@ function initChart() {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            animation: false,  // Disable animations for faster updates
+            animation: false,
             scales: {
                 x: {
                     type: 'linear',
@@ -71,10 +70,6 @@ function initChart() {
                 },
                 tooltip: {
                     enabled: false
-                },
-                decimation: {
-                    enabled: true,
-                    algorithm: 'lttb'
                 }
             }
         }
@@ -82,17 +77,16 @@ function initChart() {
 }
 
 function updateChart() {
-    // Fetch full resolution data from server
-    fetch('/api/samples/recent?seconds=' + CHART_WINDOW_SECONDS)
+    fetch('/api/samples/recent?seconds=1.0')
         .then(r => r.json())
         .then(result => {
             if (result.samples && result.samples.length > 0) {
                 const samples = result.samples;
                 
-                // Get relative time from oldest sample
+                // Get relative time (from first sample)
                 const startTime = samples[0].timestamp;
                 
-                // Update chart datasets with all available data
+                // Update datasets
                 accelChart.data.datasets[0].data = samples.map(s => ({
                     x: s.timestamp - startTime,
                     y: s.ax_g
@@ -106,8 +100,7 @@ function updateChart() {
                     y: s.az_g
                 }));
                 
-                // Update chart without animation for smooth display
-                accelChart.update('none');
+                accelChart.update();
             }
         })
         .catch(error => {
@@ -142,7 +135,7 @@ socket.on('disconnect', () => {
         '❌ Connection lost - Reconnecting...';
 });
 
-// Real-time sample updates - stats only, chart uses HTTP polling
+// Real-time sample updates
 socket.on('sample_update', (sample) => {
     if (sample) {
         document.getElementById('accel_x').textContent = sample.ax_g.toFixed(3);
@@ -199,6 +192,6 @@ socket.on('stats_update', (stats) => {
 // Initialize chart on page load
 initChart();
 
-// Update chart every 100ms for high time resolution (10 Hz refresh with full data)
+// Update chart every 500ms (still via HTTP for bulk data)
 updateChart();
-setInterval(updateChart, 100);
+setInterval(updateChart, 500);
