@@ -390,6 +390,73 @@ h1 {
     word-wrap: break-word;
 }
 
+.response-formatted {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+    font-size: 0.9em;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.response-section {
+    font-size: 1em;
+    color: #1e3c72;
+    margin-top: 12px;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.response-section:first-child {
+    margin-top: 0;
+}
+
+.response-subsection {
+    font-size: 0.95em;
+    color: #667eea;
+    margin-top: 8px;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+
+.response-line {
+    padding: 6px 0;
+    line-height: 1.5;
+}
+
+.response-line.nested {
+    padding-left: 20px;
+}
+
+.response-line strong {
+    color: #333;
+    font-weight: 600;
+    min-width: 120px;
+    display: inline-block;
+}
+
+.value-string {
+    color: #2c3e50;
+}
+
+.value-number {
+    color: #e67e22;
+    font-weight: 600;
+}
+
+.value-boolean {
+    color: #27ae60;
+    font-weight: 600;
+}
+
+.value-null,
+.value-empty {
+    color: #95a5a6;
+    font-style: italic;
+}
+
 .json-structured {
     background: #f8f9fa;
     padding: 12px;

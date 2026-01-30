@@ -75,9 +75,17 @@ function loadDatabaseStats() {
                     db.time_span_hours.toFixed(2) + ' hours';
                 document.getElementById('dbQueueSize').textContent = 
                     `${db.write_queue_size} / ${db.write_queue_max}`;
+                
+                // Show success toast
+                showToast('success', 'Stats Refreshed', 'Database statistics updated successfully');
+            } else {
+                showToast('error', 'Error', data.message || 'Failed to load stats');
             }
         })
-        .catch(err => console.error('Error loading database stats:', err));
+        .catch(err => {
+            console.error('Error loading database stats:', err);
+            showToast('error', 'Connection Error', 'Failed to fetch database statistics');
+        });
 }
 
 function sendESPCommand(endpoint, method) {
@@ -184,41 +192,64 @@ function showToast(type, title, message, isJson = false) {
 }
 
 function formatJsonResponse(obj) {
-    // Create a structured display of JSON data
+    // Create a human-readable display of JSON data
     const result = [];
-    result.push('<div class="json-structured">');
+    result.push('<div class="response-formatted">');
     
-    function renderValue(key, value, indent = 0) {
-        const indentStr = '  '.repeat(indent);
+    // Special handling for ESP32 responses
+    if (obj.raw_response && typeof obj.raw_response === 'string') {
+        try {
+            const parsed = JSON.parse(obj.raw_response);
+            obj = parsed;
+        } catch (e) {
+            // If parsing fails, display as-is
+        }
+    }
+    
+    function formatKey(key) {
+        // Convert snake_case or camelCase to Title Case
+        return key.replace(/_/g, ' ')
+                  .replace(/([A-Z])/g, ' $1')
+                  .replace(/^./, str => str.toUpperCase())
+                  .trim();
+    }
+    
+    function renderValue(key, value, isNested = false) {
+        const formattedKey = formatKey(key);
         
         if (value === null || value === undefined) {
-            return `${indentStr}<div class="json-line"><span class="json-key">${key}:</span> <span class="json-null">null</span></div>`;
+            return `<div class="response-line ${isNested ? 'nested' : ''}"><strong>${formattedKey}:</strong> <span class="value-null">Not set</span></div>`;
         } else if (typeof value === 'boolean') {
-            return `${indentStr}<div class="json-line"><span class="json-key">${key}:</span> <span class="json-boolean">${value}</span></div>`;
+            return `<div class="response-line ${isNested ? 'nested' : ''}"><strong>${formattedKey}:</strong> <span class="value-boolean">${value ? '✓ Yes' : '✗ No'}</span></div>`;
         } else if (typeof value === 'number') {
-            return `${indentStr}<div class="json-line"><span class="json-key">${key}:</span> <span class="json-number">${value}</span></div>`;
+            return `<div class="response-line ${isNested ? 'nested' : ''}"><strong>${formattedKey}:</strong> <span class="value-number">${value.toLocaleString()}</span></div>`;
         } else if (typeof value === 'string') {
-            return `${indentStr}<div class="json-line"><span class="json-key">${key}:</span> <span class="json-string">"${escapeHtml(value)}"</span></div>`;
+            return `<div class="response-line ${isNested ? 'nested' : ''}"><strong>${formattedKey}:</strong> <span class="value-string">${escapeHtml(value)}</span></div>`;
         } else if (Array.isArray(value)) {
             if (value.length === 0) {
-                return `${indentStr}<div class="json-line"><span class="json-key">${key}:</span> []</div>`;
+                return `<div class="response-line ${isNested ? 'nested' : ''}"><strong>${formattedKey}:</strong> <span class="value-empty">None</span></div>`;
             }
-            let html = `${indentStr}<div class="json-line"><span class="json-key">${key}:</span> [</div>`;
+            let html = `<div class="response-section"><strong>${formattedKey}:</strong></div>`;
             value.forEach((item, i) => {
-                html += renderValue(`[${i}]`, item, indent + 1);
+                if (typeof item === 'object') {
+                    html += `<div class="response-subsection">Item ${i + 1}:</div>`;
+                    Object.keys(item).forEach(k => {
+                        html += renderValue(k, item[k], true);
+                    });
+                } else {
+                    html += `<div class="response-line nested">• ${escapeHtml(String(item))}</div>`;
+                }
             });
-            html += `${indentStr}<div class="json-line">]</div>`;
             return html;
         } else if (typeof value === 'object') {
             const keys = Object.keys(value);
             if (keys.length === 0) {
-                return `${indentStr}<div class="json-line"><span class="json-key">${key}:</span> {}</div>`;
+                return `<div class="response-line ${isNested ? 'nested' : ''}"><strong>${formattedKey}:</strong> <span class="value-empty">None</span></div>`;
             }
-            let html = `${indentStr}<div class="json-line"><span class="json-key">${key}:</span> {</div>`;
+            let html = `<div class="response-section"><strong>${formattedKey}:</strong></div>`;
             keys.forEach(k => {
-                html += renderValue(k, value[k], indent + 1);
+                html += renderValue(k, value[k], true);
             });
-            html += `${indentStr}<div class="json-line">}</div>`;
             return html;
         }
         return '';
@@ -227,7 +258,7 @@ function formatJsonResponse(obj) {
     // Render top-level object
     const keys = Object.keys(obj);
     keys.forEach(key => {
-        result.push(renderValue(key, obj[key], 0));
+        result.push(renderValue(key, obj[key], false));
     });
     
     result.push('</div>');
