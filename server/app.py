@@ -599,9 +599,9 @@ def get_recent_samples():
             # Filter samples within time window
             filtered = [s for s in recent_samples if s.timestamp >= cutoff]
             
-            # Downsample if too many points (max 10000 points for web display)
-            if len(filtered) > 10000:
-                step = len(filtered) // 10000
+            # Downsample if too many points (max 50000 points for web display)
+            if len(filtered) > 50000:
+                step = len(filtered) // 50000
                 filtered = filtered[::step]
             
             samples_dict = [asdict(s) for s in filtered]
