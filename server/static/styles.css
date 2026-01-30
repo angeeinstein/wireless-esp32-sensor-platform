@@ -390,6 +390,45 @@ h1 {
     word-wrap: break-word;
 }
 
+.json-structured {
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85em;
+    max-height: 400px;
+    overflow-y: auto;
+    line-height: 1.6;
+}
+
+.json-line {
+    padding: 2px 0;
+}
+
+.json-key {
+    color: #0066cc;
+    font-weight: 600;
+}
+
+.json-string {
+    color: #008000;
+}
+
+.json-number {
+    color: #b34700;
+}
+
+.json-boolean {
+    color: #9c27b0;
+    font-weight: 600;
+}
+
+.json-null {
+    color: #999;
+    font-style: italic;
+}
+
 .toast-json {
     background: #f5f5f5;
     padding: 10px;
