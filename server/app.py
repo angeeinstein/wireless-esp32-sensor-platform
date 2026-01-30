@@ -297,6 +297,7 @@ def udp_receiver_thread():
     acc_norm_sum = 0.0
     acc_norm_n = 0
     last_stat_t = time.time()
+    last_log_t = time.time()  # Separate timer for logging
     last_emit_t = time.time()
     
     # Sample-time base for timestamps
@@ -465,9 +466,9 @@ def udp_receiver_thread():
         # Opportunistic fast-forward
         fast_forward_if_stuck()
         
-        # Update stats every second
+        # Update stats every 100ms (10 Hz) for faster UI updates
         now = time.time()
-        if now - last_stat_t >= 1.0:
+        if now - last_stat_t >= 0.1:
             dt = now - last_stat_t
             mbit = (bytes_in * 8.0) / dt / 1e6
             sps = samp_in / dt if dt > 0 else 0.0
@@ -483,7 +484,7 @@ def udp_receiver_thread():
                 current_stats.uptime_sec = now - start_time
                 current_stats.is_receiving = True
                 
-                # Emit stats update via WebSocket
+                # Emit stats update via WebSocket (10 Hz)
                 socketio.emit('stats_update', asdict(current_stats))
             
             # Get latest sample for real-time display
@@ -492,8 +493,11 @@ def udp_receiver_thread():
                     latest = asdict(recent_samples[-1])
                     socketio.emit('sample_update', latest)
             
-            logger.info(f"UDP {mbit:5.2f} Mbit/s  {sps:7.0f} samp/s  |a|={mean_norm:.4f} g  "
-                  f"drops={drops}  buf={len(reorder)}")
+            # Log to console every second (keep logging at 1 Hz to avoid spam)
+            if now - last_log_t >= 1.0:
+                logger.info(f"UDP {mbit:5.2f} Mbit/s  {sps:7.0f} samp/s  |a|={mean_norm:.4f} g  "
+                      f"drops={drops}  buf={len(reorder)}")
+                last_log_t = now
             
             bytes_in = samp_in = 0
             acc_norm_sum = 0.0
