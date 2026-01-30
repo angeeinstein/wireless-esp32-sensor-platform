@@ -79,6 +79,15 @@ class StreamStats:
     uptime_sec: float
     is_receiving: bool
 
+# Database stats cache
+db_stats_cache = {
+    'total_samples': 0,
+    'min_time': 0,
+    'max_time': 0,
+    'last_update': 0
+}
+db_stats_lock = threading.Lock()
+
 # ===== GLOBAL STATE =====
 # Thread-safe storage for recent samples (last 10 seconds at 32kHz = 320k samples max)
 # This provides fast access for real-time API queries
@@ -740,28 +749,49 @@ def get_sample_history():
 
 @app.route('/api/database/stats', methods=['GET'])
 def get_database_stats():
-    """Get database statistics"""
+    """Get database statistics (cached for performance)"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        # Check if we should refresh the cache (every 10 seconds)
+        now = time.time()
+        force_refresh = request.args.get('refresh', 'false').lower() == 'true'
         
-        # Total samples
-        cursor.execute("SELECT COUNT(*) FROM samples")
-        total_samples = cursor.fetchone()[0]
+        with db_stats_lock:
+            cache_age = now - db_stats_cache['last_update']
+            
+            # Use cached data if less than 10 seconds old and not force refresh
+            if cache_age < 10 and not force_refresh and db_stats_cache['last_update'] > 0:
+                total_samples = db_stats_cache['total_samples']
+                min_time = db_stats_cache['min_time']
+                max_time = db_stats_cache['max_time']
+            else:
+                # Need to query database
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                
+                # Use faster approximate count for large tables
+                # For SQLite, we can use a faster method
+                cursor.execute("SELECT COUNT(*) FROM samples")
+                total_samples = cursor.fetchone()[0]
+                
+                # Time range - this is relatively fast with index
+                cursor.execute("SELECT MIN(timestamp), MAX(timestamp) FROM samples")
+                row = cursor.fetchone()
+                min_time = row[0] if row[0] else 0
+                max_time = row[1] if row[1] else 0
+                
+                conn.close()
+                
+                # Update cache
+                db_stats_cache['total_samples'] = total_samples
+                db_stats_cache['min_time'] = min_time
+                db_stats_cache['max_time'] = max_time
+                db_stats_cache['last_update'] = now
         
-        # Time range
-        cursor.execute("SELECT MIN(timestamp), MAX(timestamp) FROM samples")
-        row = cursor.fetchone()
-        min_time = row[0] if row[0] else 0
-        max_time = row[1] if row[1] else 0
-        
-        # Database file size
+        # Database file size (fast operation)
         db_size_bytes = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
         
         # Queue status
         queue_size = db_write_queue.qsize()
-        
-        conn.close()
         
         return jsonify({
             'status': 'success',
@@ -818,6 +848,159 @@ def manage_retention():
             
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/database/diagnostics', methods=['GET'])
+def database_diagnostics():
+    """Get detailed database diagnostics to investigate size issues"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Basic stats
+        total_samples = cursor.execute("SELECT COUNT(*) FROM samples").fetchone()[0]
+        
+        # Check for duplicate sample_ids
+        duplicates = cursor.execute("""
+            SELECT sample_id, COUNT(*) as count 
+            FROM samples 
+            GROUP BY sample_id 
+            HAVING count > 1 
+            LIMIT 10
+        """).fetchall()
+        
+        # Get all indexes
+        indexes = cursor.execute("""
+            SELECT name, sql FROM sqlite_master 
+            WHERE type='index' AND tbl_name='samples'
+        """).fetchall()
+        
+        # Get all tables
+        tables = cursor.execute("""
+            SELECT name, sql FROM sqlite_master WHERE type='table'
+        """).fetchall()
+        
+        # Check time span and calculate expected vs actual rate
+        time_span = cursor.execute("""
+            SELECT 
+                MIN(timestamp) as min_ts,
+                MAX(timestamp) as max_ts,
+                MAX(timestamp) - MIN(timestamp) as span_seconds
+            FROM samples
+        """).fetchone()
+        
+        # Page count and page size
+        page_count = cursor.execute("PRAGMA page_count").fetchone()[0]
+        page_size = cursor.execute("PRAGMA page_size").fetchone()[0]
+        
+        # Database size breakdown
+        db_size_mb = os.path.getsize(DB_PATH) / (1024 * 1024)
+        
+        # Check for WAL and SHM files
+        wal_path = DB_PATH + "-wal"
+        shm_path = DB_PATH + "-shm"
+        wal_size_mb = os.path.getsize(wal_path) / (1024 * 1024) if os.path.exists(wal_path) else 0
+        shm_size_mb = os.path.getsize(shm_path) / (1024 * 1024) if os.path.exists(shm_path) else 0
+        
+        conn.close()
+        
+        # Calculate expected size (very rough estimate)
+        bytes_per_row = 8 + 4 + 8*4  # id(8) + sample_id(4) + 4 floats(8 each)
+        expected_size_mb = (total_samples * bytes_per_row) / (1024 * 1024)
+        
+        avg_rate = total_samples / time_span[2] if time_span[2] > 0 else 0
+        
+        return jsonify({
+            'success': True,
+            'total_samples': total_samples,
+            'duplicate_sample_ids': len(duplicates),
+            'duplicate_examples': [{'sample_id': d[0], 'count': d[1]} for d in duplicates],
+            'indexes': [{'name': idx[0], 'sql': idx[1]} for idx in indexes],
+            'tables': [{'name': t[0], 'sql': t[1]} for t in tables],
+            'time_span': {
+                'min_timestamp': time_span[0],
+                'max_timestamp': time_span[1],
+                'span_seconds': time_span[2],
+                'span_hours': round(time_span[2] / 3600, 2) if time_span[2] else 0
+            },
+            'sample_rate': {
+                'average_hz': round(avg_rate, 0),
+                'expected_hz': 32000
+            },
+            'file_sizes': {
+                'db_mb': round(db_size_mb, 2),
+                'wal_mb': round(wal_size_mb, 2),
+                'shm_mb': round(shm_size_mb, 2),
+                'total_mb': round(db_size_mb + wal_size_mb + shm_size_mb, 2)
+            },
+            'size_analysis': {
+                'expected_raw_mb': round(expected_size_mb, 2),
+                'actual_mb': round(db_size_mb, 2),
+                'overhead_factor': round(db_size_mb / expected_size_mb, 2) if expected_size_mb > 0 else 0
+            },
+            'sqlite_internals': {
+                'page_count': page_count,
+                'page_size': page_size,
+                'calculated_size_mb': round((page_count * page_size) / (1024 * 1024), 2)
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Diagnostics error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/database/cleanup', methods=['POST'])
+def manual_cleanup():
+    """Manually trigger database cleanup and optimization"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Count old data
+        cutoff = time.time() - (DB_RETENTION_HOURS * 3600)
+        cursor.execute("SELECT COUNT(*) FROM samples WHERE timestamp < ?", (cutoff,))
+        old_count = cursor.fetchone()[0]
+        
+        # Get total count before
+        cursor.execute("SELECT COUNT(*) FROM samples")
+        total_before = cursor.fetchone()[0]
+        
+        # Get file size before
+        size_before = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
+        
+        if old_count > 0:
+            # Delete old data
+            cursor.execute("DELETE FROM samples WHERE timestamp < ?", (cutoff,))
+            conn.commit()
+            logger.info(f"Cleanup: Deleted {old_count} old samples (>{DB_RETENTION_HOURS}h)")
+        
+        # Always run VACUUM to reclaim space
+        cursor.execute("VACUUM")
+        conn.commit()
+        logger.info("Cleanup: VACUUM completed")
+        
+        # Get stats after
+        cursor.execute("SELECT COUNT(*) FROM samples")
+        total_after = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        # Get file size after
+        size_after = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Cleanup complete',
+            'samples_deleted': old_count,
+            'samples_before': total_before,
+            'samples_after': total_after,
+            'size_before_mb': size_before / (1024 * 1024),
+            'size_after_mb': size_after / (1024 * 1024),
+            'space_reclaimed_mb': (size_before - size_after) / (1024 * 1024)
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error during cleanup: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/database/clear', methods=['POST'])
 def clear_database():

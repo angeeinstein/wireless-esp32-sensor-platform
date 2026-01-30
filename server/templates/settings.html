@@ -37,6 +37,16 @@
             
             <div class="setting-row">
                 <div>
+                    <div class="setting-label">Optimize Database</div>
+                    <div class="setting-description">Remove old data beyond retention period and reclaim disk space (VACUUM)</div>
+                </div>
+                <div class="setting-control">
+                    <button class="btn btn-secondary" onclick="optimizeDatabase()">Optimize & Cleanup</button>
+                </div>
+            </div>
+            
+            <div class="setting-row">
+                <div>
                     <div class="setting-label">Clear All Data</div>
                     <div class="setting-description">Permanently delete all recorded samples from database</div>
                 </div>
@@ -90,6 +100,14 @@
                 </div>
             </div>
             <button class="btn btn-primary" onclick="loadDatabaseStats()" style="margin-top: 15px;">Refresh Stats</button>
+            <button class="btn btn-primary" onclick="runDiagnostics()" style="margin-top: 15px; margin-left: 10px;">🔍 Run Diagnostics</button>
+        </div>
+        
+        <!-- Diagnostics Output -->
+        <div class="settings-section" id="diagnostics-section" style="display: none;">
+            <h3>🔬 Database Diagnostics</h3>
+            <div id="diagnostics-output" style="background: #1e1e1e; padding: 15px; border-radius: 4px; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; white-space: pre-wrap; max-height: 600px; overflow-y: auto; line-height: 1.5; color: #d4d4d4;">
+            </div>
         </div>
     </div>
     

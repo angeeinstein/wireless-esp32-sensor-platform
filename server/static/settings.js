@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
 window.loadSettings = loadSettings;
 window.saveRetention = saveRetention;
 window.clearAllData = clearAllData;
+window.optimizeDatabase = optimizeDatabase;
 window.loadDatabaseStats = loadDatabaseStats;
 window.sendESPCommand = sendESPCommand;
 
@@ -64,6 +65,35 @@ function clearAllData() {
     })
     .catch(err => {
         showToast('error', 'Error', 'Failed to clear database');
+        console.error(err);
+    });
+}
+
+function optimizeDatabase() {
+    if (!confirm('⚠️ This will delete data older than the retention period and optimize the database. This may take several minutes. Continue?')) {
+        return;
+    }
+    
+    showToast('info', 'Optimizing...', 'This may take a few minutes for large databases');
+    
+    fetch('/api/database/cleanup', {
+        method: 'POST'
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'success') {
+            const message = `
+Deleted ${formatNumber(data.samples_deleted)} old samples
+Database: ${data.size_before_mb.toFixed(2)} MB → ${data.size_after_mb.toFixed(2)} MB
+Reclaimed: ${data.space_reclaimed_mb.toFixed(2)} MB`;
+            showToast('success', 'Optimization Complete', message);
+            loadDatabaseStats();
+        } else {
+            showToast('error', 'Error', data.message);
+        }
+    })
+    .catch(err => {
+        showToast('error', 'Error', 'Failed to optimize database');
         console.error(err);
     });
 }
@@ -277,3 +307,81 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+// Run diagnostics to investigate database size
+function runDiagnostics() {
+    showToast('Running diagnostics...', 'info');
+    
+    fetch('/api/database/diagnostics')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const section = document.getElementById('diagnostics-section');
+                const output = document.getElementById('diagnostics-output');
+                
+                // Format diagnostics output
+                let text = '=== DATABASE DIAGNOSTICS ===\n\n';
+                
+                text += '📊 SAMPLE DATA:\n';
+                text += `  Total Samples: ${data.total_samples.toLocaleString()}\n`;
+                text += `  Time Span: ${data.time_span.span_seconds.toFixed(2)}s (${data.time_span.span_hours}h)\n`;
+                text += `  Average Rate: ${data.sample_rate.average_hz.toLocaleString()} Hz\n`;
+                text += `  Expected Rate: ${data.sample_rate.expected_hz.toLocaleString()} Hz\n\n`;
+                
+                text += '🔍 DUPLICATE CHECK:\n';
+                text += `  Duplicate sample_ids: ${data.duplicate_sample_ids}\n`;
+                if (data.duplicate_examples.length > 0) {
+                    text += '  Examples:\n';
+                    data.duplicate_examples.forEach(d => {
+                        text += `    sample_id ${d.sample_id}: ${d.count} copies\n`;
+                    });
+                } else {
+                    text += '  ✓ No duplicates found\n';
+                }
+                text += '\n';
+                
+                text += '💾 FILE SIZES:\n';
+                text += `  Main DB: ${data.file_sizes.db_mb.toFixed(2)} MB\n`;
+                text += `  WAL file: ${data.file_sizes.wal_mb.toFixed(2)} MB\n`;
+                text += `  SHM file: ${data.file_sizes.shm_mb.toFixed(2)} MB\n`;
+                text += `  TOTAL: ${data.file_sizes.total_mb.toFixed(2)} MB\n\n`;
+                
+                text += '📐 SIZE ANALYSIS:\n';
+                text += `  Expected (raw): ${data.size_analysis.expected_raw_mb.toFixed(2)} MB\n`;
+                text += `  Actual: ${data.size_analysis.actual_mb.toFixed(2)} MB\n`;
+                text += `  Overhead Factor: ${data.size_analysis.overhead_factor}x\n\n`;
+                
+                text += '🗄️ SQLITE INTERNALS:\n';
+                text += `  Page Count: ${data.sqlite_internals.page_count.toLocaleString()}\n`;
+                text += `  Page Size: ${data.sqlite_internals.page_size} bytes\n`;
+                text += `  Calculated Size: ${data.sqlite_internals.calculated_size_mb.toFixed(2)} MB\n\n`;
+                
+                text += '📑 TABLES:\n';
+                data.tables.forEach(t => {
+                    text += `  - ${t.name}\n`;
+                });
+                text += '\n';
+                
+                text += '🔑 INDEXES:\n';
+                data.indexes.forEach(idx => {
+                    text += `  - ${idx.name}\n`;
+                });
+                
+                output.textContent = text;
+                section.style.display = 'block';
+                
+                // Scroll to diagnostics
+                section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                
+                showToast('Diagnostics complete', 'success');
+            } else {
+                showToast(`Error: ${data.error}`, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showToast('Failed to run diagnostics', 'error');
+        });
+}
+
+window.runDiagnostics = runDiagnostics;
