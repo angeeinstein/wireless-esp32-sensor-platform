@@ -141,11 +141,8 @@ socket.on('disconnect', () => {
     document.getElementById('statusText').textContent = 
         '❌ Connection lost - Reconnecting...';
 });
-    
-        // Periodically refresh bulk data for smooth display
-        refreshChartData();
-    
-// Real-time sample updates - now also updates chart at 30 Hz
+
+// Real-time sample updates - stats only, chart uses HTTP polling
 socket.on('sample_update', (sample) => {
     if (sample) {
         document.getElementById('accel_x').textContent = sample.ax_g.toFixed(3);
