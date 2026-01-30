@@ -157,9 +157,6 @@ socket.on('sample_update', (sample) => {
             sample.az_g * sample.az_g
         );
         document.getElementById('accel_norm').textContent = mag.toFixed(3);
-        
-        // Update chart in real-time at 30 Hz
-        updateChartWithSample(sample);
     }
 });
 
